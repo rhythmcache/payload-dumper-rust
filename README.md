@@ -84,6 +84,8 @@ Arguments:
       Save payload metadata as JSON.
 ```
 
+#### Dependencies
+- See [Cargo.toml](./Cargo.toml)
 
 
 
