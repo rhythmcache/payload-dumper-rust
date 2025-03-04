@@ -22,10 +22,10 @@ Here are some performance metrics from a **Poco X4 Pro (SD695, 8GB RAM)** runnin
 ### Screenshots
 
 - **Direct Payload Extraction**:  
-  ![Direct Payload Extraction](./Screenshot_20250304-175502_Termux.png)
+  ![Direct Payload Extraction](./Screenshot_20250304-175923_Termux.png)
 
 - **ZIP File Extraction**:  
-  ![ZIP File Extraction](./Screenshot_20250304-175923_Termux.png)
+  ![ZIP File Extraction](./Screenshot_20250304-175502_Termux.png)
 
 - **Remote URL Extraction**:  
   ![Remote URL Extraction](./Screenshot_20250304-180030_Termux.png)
