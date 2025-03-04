@@ -3,11 +3,14 @@ Android OTA payload dumper written in Rust
 
 
 ## features
-- apart from extracting from payload.bin , it can extract partitions directly from `url` or rom `zip`
+- apart from extracting from payload.bin , it can EXTRACT all/individual images directly from rom zips with hardly any time difference.
+
+- It can also extract individual partitions from `URLs` without
+downloading the rom zip fully
 
 - all decompression process are done parallelely.
 
-- Can also extract individual images 
+
 
 
 
@@ -30,6 +33,36 @@ Here are some performance metrics from a **Poco X4 Pro (SD695, 8GB RAM)** runnin
 
 
 ### Usage :
+#### Basic Usage
+
+To extract partitions from a payload file, run the following command:
+
+```bash
+payload-dumper <path/to/payload.bin> --out output_directory
+```
+#### Direct ZIP Processing
+
+it can directly process payloads from ZIP files without requiring manual extraction. Simply provide the path to the ZIP file:
+
+```bash
+./payload-dumper <path/to/ota.zip> --out <output_directory>
+```
+
+#### Remote Payloads
+
+it can also handle payloads/zips directly using url.  Simply provide the URL as path. this is very slow compared to local 
+extraction though.
+
+```bash
+./payload-dumper https://example.com/payload.bin
+```
+#### Individual partitions extraction.
+
+to extract individual partitions from payloads/URL/zips , hse `--images` 
+example to just extract boot and vendor_boot from url/zip/payload , simply run
+
+```
+payload_dumper --images boot,vendor_boot <https://example.com/zip>
 ```
 Usage: payload_dumper [OPTIONS] <PAYLOAD_PATH>
 
