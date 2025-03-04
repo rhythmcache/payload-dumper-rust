@@ -2,7 +2,7 @@
 name = "payload_dumper"
 version = "0.1.0"
 edition = "2021"
-description = "Android OTA Payload Dumper"
+description = "Android OTA Payload Dumper Written in Rust"
 repository = "https://github.com/rhythmcache/payload-dumper-rust"
 
 [dependencies]
