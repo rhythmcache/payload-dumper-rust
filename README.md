@@ -94,3 +94,9 @@ Options:
   --metadata  
       Save payload metadata as JSON.
 ```
+
+
+
+
+### Acknowledgements
+- [vm03/payload_dumper](https://github.com/vm03/payload_dumper)
