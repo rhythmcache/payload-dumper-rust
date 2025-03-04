@@ -55,9 +55,9 @@ extraction though.
 ```
 #### Individual partitions extraction.
 
-to extract individual partitions from payloads/URL/zips , hse `--images`. enter the name of partitions you want to extract comma-separated.
+to extract individual partitions from payloads/URL/zips , use `--images` and enter the name of partitions you want to extract comma-separated.
 
-for example to just extract boot and vendor_boot from url/zip/payload , simply run
+for example to just extract `boot` and `vendor_boot` from `url/zip/payload` , simply run
 
 ```
 payload_dumper --images boot,vendor_boot <https://example.com/zip>
@@ -68,26 +68,18 @@ Usage: payload_dumper [OPTIONS] <PAYLOAD_PATH>
 Arguments:
   <PAYLOAD_PATH>  
       Path to the payload file.
-
-Options:
   --out <OUT>  
       Output directory for extracted partitions. [default: output]
-
   --diff  
       Enable differential OTA mode (requires --old).
-
   --old <OLD>  
       Path to the directory containing old partition images (required for --diff). [default: old]
-
   --images <IMAGES>  
       Comma-separated list of partition names to extract (default: all partitions)
-
   --threads <THREADS>  
       Number of threads to use for parallel processing.
-
   --list  
       List available partitions in the payload.
-
   --metadata  
       Save payload metadata as JSON.
 ```
