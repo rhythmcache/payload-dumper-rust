@@ -84,9 +84,16 @@ Arguments:
       Save payload metadata as JSON.
 ```
 
-#### Dependencies
+#### Dependencies :
 - See [Cargo.toml](./Cargo.toml)
 
+
+#### Build :
+To build this , you'll need:
+- Rust compiler and Cargo
+- protobuf-compiler
+- Other obvious dependencies
+- You may also need to link against libzip, zlib, and liblzma.
 
 
 ### Acknowledgements
