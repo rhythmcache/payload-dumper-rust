@@ -29,8 +29,8 @@ curl -L -o "$curr/payload-dumper-rust/proto/update_metadata.proto" "https://raw.
 curl -L -o "$curr/payload-dumper-rust/build.rs" "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/build.rs"
 
 cd payload-dumper-rust && cargo build --release
-payload_dumper_rust="$curr/payload-dumper-rust/target/release/payload_dumper_rust"
-[ -f "$payload_dumper_rust" ] && sleep 1 && echo "" && echo "- Build Completed" && sleep 0.5 && echo "- adding to path" && cp "$payload_dumper_rust" "$PREFIX/bin"/ && chmod +x "$PREFIX/bin/payload_dumper_rust" && echo "- Installation Complete!!!" && sleep 1 && echo "- You can use it by running payload_dumper_rust" && echo "- Cleaning up" && rm -rf "$curr/payload-dumper-rust" && echo "- Done"
+payload_dumper_rust="$curr/payload-dumper-rust/target/release/payload_dumper"
+[ -f "$payload_dumper_rust" ] && sleep 1 && echo "" && echo "- Build Completed" && sleep 0.5 && echo "- adding to path" && cp "$payload_dumper_rust" "$PREFIX/bin"/ && chmod +x "$PREFIX/bin/payload_dumper" && echo "- Installation Complete!!!" && sleep 1 && echo "- You can use it by running payload_dumper" && echo "- Cleaning up" && rm -rf "$curr/payload-dumper-rust" && echo "- Done"
 
 
 
