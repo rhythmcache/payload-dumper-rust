@@ -1,5 +1,5 @@
 # payload-dumper-rust
-Android OTA payload dumper written in Rust
+Android OTA payload dumper written in Rust utilising c library 
 
 
 ## features
