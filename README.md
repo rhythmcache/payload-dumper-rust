@@ -20,16 +20,14 @@ Here are some performance metrics from a **Poco X4 Pro (SD695, 8GB RAM)** runnin
 - It can also extract partition directly from **URL** without having you to download the full rom zip file
 
 ### Screenshots
-
 - **Direct Payload Extraction**:  
-  ![Direct Payload Extraction](./Screenshot_20250304-175923_Termux.png)
+  <img src="./Screenshot_20250304-175923_Termux.png" width="75%">
 
 - **ZIP File Extraction**:  
-  ![ZIP File Extraction](./Screenshot_20250304-175502_Termux.png)
+  <img src="./Screenshot_20250304-175502_Termux.png" width="75%">
 
 - **Remote URL Extraction**:  
-  ![Remote URL Extraction](./Screenshot_20250304-180030_Termux.png)
-
+  <img src="./Screenshot_20250304-180030_Termux.png" width="75%">
 
 ### Usage :
 #### Basic Usage
