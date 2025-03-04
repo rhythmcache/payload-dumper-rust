@@ -94,7 +94,9 @@ To build this , you'll need:
 - protobuf-compiler
 - Other obvious dependencies
 - You may also need to link against libzip, zlib, and liblzma.
-***To Build On Termux , Simply Run***
+
+  
+- ***To Build On Termux , Simply Run***
 ```
 bash <(curl -L "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/termux-build.sh")
 ```
