@@ -1,24 +1,23 @@
 # payload-dumper-rust
-Android OTA payload dumper written in Rust utilising c library 
+Android OTA payload dumper written in Rust utilising c libraries
 
 
 ## features
-- apart from extracting from payload.bin , it can EXTRACT all/individual images directly from rom zips with hardly any time difference.
+- Extracts all or individual images directly from payload.bin or ROM ZIP files with minimal time difference.
 
-- It can also extract individual partitions from `URLs` without
-downloading the rom zip fully
+- Supports extracting individual partitions from URLs without downloading the full ROM ZIP.
 
-- all decompression process are done parallelely.
-
-
+- All decompression processes run in parallel for improved performance. ( can be customised by using`--no-parallel` or `--threads <n>` as argument )
 
 
 
 Here are some performance metrics from a **Poco X4 Pro (SD695, 8GB RAM)** running in Termux:
 
 - **Direct Payload Extraction**: Extracting partitions directly from the `payload.bin` took **2 minutes 26 seconds**.
+
 - **ZIP File Extraction**: Extracting partitions directly from the ZIP file took **2 minutes 30 seconds**, just **4 seconds difference**
-- It can also extract partition directly from **url** without having you to download the full rom zip file
+
+- It can also extract partition directly from **URL** without having you to download the full rom zip file
 
 ### Screenshots
 
