@@ -13,11 +13,16 @@ Android OTA payload dumper written in Rust utilising c libraries
 
 Here are some performance metrics from a **Poco X4 Pro (SD695, 8GB RAM)** running in Termux:
 
+
+payload/zip file used :- `[comet-ota-ad1a.240530.030-98066022.zip](https://dl.google.com/dl/android/aosp/comet-ota-ad1a.240530.030-98066022.zip)` (2.53GB)
+
 - **Direct Payload Extraction**: Extracting partitions directly from the `payload.bin` took **2 minutes 26 seconds**.
 
 - **ZIP File Extraction**: Extracting partitions directly from the ZIP file took **2 minutes 30 seconds**, just **4 seconds difference**
 
 - It can also extract partition directly from **URL** without having you to download the full rom zip file
+
+
 
 ### Screenshots
 - **Direct Payload Extraction**:  
