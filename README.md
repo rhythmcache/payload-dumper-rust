@@ -103,4 +103,4 @@ bash <(curl -L "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rus
 
 
 ### Acknowledgements
-- [vm03/payload_dumper](https://github.com/vm03/payload_dumper)
+- This tool is inspired from [vm03/payload_dumper](https://github.com/vm03/payload_dumper)
