@@ -65,7 +65,7 @@ for example to just extract boot and vendor_boot from url/zip/payload , simply r
 ```
 payload_dumper --images boot,vendor_boot <https://example.com/zip>
 ```
-
+```
 Usage: payload_dumper [OPTIONS] <PAYLOAD_PATH>
 
 Arguments:
