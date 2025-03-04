@@ -19,7 +19,7 @@ install_package() {
   done
 }
 
-install_package rust zlib-static zlib pkg-config libzip liblzma liblzma-static protobuf
+install_package rust cmake zlib-static zlib pkg-config libzip liblzma liblzma-static protobuf
 
 [ -d "$curr/payload-dumper-rust" ] && rm -r "$curr/payload-dumper-rust"
 mkdir -p "$curr/payload-dumper-rust/src" "$curr/payload-dumper-rust/proto"
