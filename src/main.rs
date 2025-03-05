@@ -1829,6 +1829,7 @@ fn main() -> Result<()> {
             }
         }
     } else {
+         let mut success_or_what = true;
         for partition in partitions_to_extract {
             if let Err(e) = dump_partition(
                 partition,
@@ -1842,14 +1843,22 @@ fn main() -> Result<()> {
                     "Failed to process partition {}: {}",
                     partition.partition_name, e
                 );
+                success_or_what = false;
             }
         }
+        if success_or_what {
+            main_pb.finish_with_message("Partitions Processed Successfully!");
+            println!(
+                "\nExtraction completed successfully. Check the output directory: {:?}",
+                args.out
+            );
+        } else {
+            main_pb.finish_with_message("Partition processing completed with errors.");
+            println!(
+                "\nExtraction completed with errors. Check the output directory: {:?}",
+                args.out
+            );
+        }
     }
-    main_pb.finish_with_message("Partitions Processed Succesfully !");
-    println!(
-        "\nExtraction completed. Check the output directory: {:?}",
-        args.out
-    );
-
     Ok(())
-}
+}    
