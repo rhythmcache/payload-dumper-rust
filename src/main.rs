@@ -92,10 +92,8 @@ struct PartitionMetadata {
 }
 
 #[derive(Parser)]
-
 #[command(version, about, long_about = None)]
-
-#[command(next_line_help = true)] 
+#[command(next_line_help = true)]
 
 struct Args {
     payload_path: PathBuf,
@@ -107,10 +105,7 @@ struct Args {
     )]
     out: PathBuf,
 
-    #[arg(
-        long,
-        help = "Enable differential OTA mode (requires --old)"
-    )]
+    #[arg(long, help = "Enable differential OTA mode (requires --old)")]
     diff: bool,
 
     #[arg(
@@ -127,10 +122,7 @@ struct Args {
     )]
     images: String,
 
-    #[arg(
-        long,
-        help = "Number of threads to use for parallel processing"
-    )]
+    #[arg(long, help = "Number of threads to use for parallel processing")]
     threads: Option<usize>,
 
     #[arg(
@@ -148,10 +140,7 @@ struct Args {
     )]
     list: bool,
 
-    #[arg(
-        long,
-        help = "Save payload metadata as JSON"
-    )]
+    #[arg(long, help = "Save payload metadata as JSON")]
     metadata: bool,
 
     #[arg(
@@ -161,7 +150,6 @@ struct Args {
     )]
     no_parallel: bool,
 }
-
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum DecompressMode {
@@ -437,10 +425,17 @@ impl HttpReader {
     fn new_silent(url: String) -> Result<Self> {
         Self::new_internal(url, false)
     }
+
     fn new_internal(url: String, print_size: bool) -> Result<Self> {
         let mut client = attohttpc::Session::new();
-        client.timeout(Duration::from_secs(300));
-        client.header("Accept-Encoding", "gzip, deflate");
+
+        // Increase timeout for slower connections
+        client.timeout(Duration::from_secs(600));
+
+        // Set more resilient headers
+        client.header("Accept-Encoding", "*");
+        client.header("Accept", "*/*");
+        client.header("User-Agent", "Mozilla/5.0");
         client.header("Accept-Ranges", "bytes");
         client.header("Connection", "keep-alive");
         client.header("Cache-Control", "no-transform");
@@ -451,39 +446,108 @@ impl HttpReader {
             url
         };
 
-        if let Err(e) = url::Url::parse(&url) {
-            return Err(anyhow!("Invalid URL: {}", e));
+        // Validate URL
+        let parsed_url = url::Url::parse(&url).map_err(|e| anyhow!("Invalid URL: {}", e))?;
+
+        // try multiple ways to validate connectivity
+        let host = parsed_url
+            .host_str()
+            .ok_or_else(|| anyhow!("No host in URL"))?;
+        let port = parsed_url
+            .port()
+            .unwrap_or(if parsed_url.scheme() == "https" {
+                443
+            } else {
+                80
+            });
+
+        // Try different DNS resolution methods
+        let mut resolved = false;
+
+        // Method 1: Try system resolver
+        if let Ok(_) = std::net::ToSocketAddrs::to_socket_addrs(&format!("{}:{}", host, port)) {
+            resolved = true;
         }
-        let response = client.head(&url).send()?;
-        let content_type = response
-            .headers()
-            .get("content-type")
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string());
 
-        let content_length = response
-            .headers()
-            .get("content-length")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.parse::<u64>().ok())
-            .ok_or_else(|| anyhow!("Could not determine content length"))?;
-
-        if print_size {
-            println!("- File size: {}", format_size(content_length));
+        // Method 2: Try direct IP connection if host is an IP
+        if !resolved {
+            if let Ok(_) = host.parse::<std::net::IpAddr>() {
+                resolved = true;
+            }
         }
 
-        Ok(Self {
-            url,
-            position: 0,
-            content_length,
-            client,
-            buffer: Vec::with_capacity(BUFFER_SIZE),
-            buffer_start: 0,
-            buffer_end: 0,
-            buffer_size: BUFFER_SIZE,
-            content_type,
-        })
+        // Method 3: try explicit DNS lookup using system resolver
+        if !resolved {
+            #[cfg(unix)]
+            {
+                use std::process::Command;
+                if let Ok(output) = Command::new("getent").args(&["hosts", host]).output() {
+                    if output.status.success() {
+                        resolved = true;
+                    }
+                }
+            }
+        }
+
+        if !resolved {
+            return Err(anyhow!(
+                "Failed to resolve hostname: {}. Please check your network connection and DNS settings.",
+                host
+            ));
+        }
+        let mut retry_count = 0;
+        let max_retries = 3;
+        let mut last_error = None;
+
+        while retry_count < max_retries {
+            match client.head(&url).send() {
+                Ok(response) => {
+                    let content_type = response
+                        .headers()
+                        .get("content-type")
+                        .and_then(|v| v.to_str().ok())
+                        .map(|s| s.to_string());
+
+                    let content_length = response
+                        .headers()
+                        .get("content-length")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|v| v.parse::<u64>().ok())
+                        .ok_or_else(|| anyhow!("Could not determine content length"))?;
+
+                    if print_size {
+                        println!("- File size: {}", format_size(content_length));
+                    }
+
+                    return Ok(Self {
+                        url,
+                        position: 0,
+                        content_length,
+                        client,
+                        buffer: Vec::with_capacity(BUFFER_SIZE),
+                        buffer_start: 0,
+                        buffer_end: 0,
+                        buffer_size: BUFFER_SIZE,
+                        content_type,
+                    });
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                    retry_count += 1;
+                    if retry_count < max_retries {
+                        std::thread::sleep(Duration::from_secs(2 * retry_count as u64));
+                    }
+                }
+            }
+        }
+
+        Err(anyhow!(
+            "Failed to connect after {} retries. Last error: {}",
+            max_retries,
+            last_error.unwrap()
+        ))
     }
+
     fn fill_buffer(&mut self) -> io::Result<()> {
         let start = self.position;
         let end = std::cmp::min(start + self.buffer_size as u64 - 1, self.content_length - 1);
@@ -491,45 +555,71 @@ impl HttpReader {
         if start >= self.content_length {
             return Ok(());
         }
+
         let range = format!("bytes={}-{}", start, end);
-        let mut response = self
-            .client
-            .get(&self.url)
-            .header("Range", range)
-            .header("Connection", "keep-alive")
-            .header("Cache-Control", "no-transform")
-            .send()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
-        if !response.status().is_success() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Failed to access URL range: {}", response.status()),
-            ));
-        }
-        self.buffer.clear();
-        let mut temp_buf = vec![0u8; self.buffer_size];
-        let mut total_read = 0;
+        let mut retry_count = 0;
+        let max_retries = 3;
 
-        loop {
-            match response.read(&mut temp_buf[total_read..]) {
-                Ok(0) => break,
-                Ok(n) => {
-                    total_read += n;
-                    if total_read == temp_buf.len() {
-                        break;
+        while retry_count < max_retries {
+            match self
+                .client
+                .get(&self.url)
+                .header("Range", &range)
+                .header("Connection", "keep-alive")
+                .header("Cache-Control", "no-transform")
+                .send()
+            {
+                Ok(mut response) => {
+                    if !response.status().is_success() {
+                        retry_count += 1;
+                        if retry_count == max_retries {
+                            return Err(io::Error::new(
+                                io::ErrorKind::Other,
+                                format!("Failed to access URL range: {}", response.status()),
+                            ));
+                        }
+                        std::thread::sleep(Duration::from_secs(2 * retry_count as u64));
+                        continue;
                     }
+
+                    self.buffer.clear();
+                    let mut temp_buf = vec![0u8; self.buffer_size];
+                    let mut total_read = 0;
+
+                    loop {
+                        match response.read(&mut temp_buf[total_read..]) {
+                            Ok(0) => break,
+                            Ok(n) => {
+                                total_read += n;
+                                if total_read == temp_buf.len() {
+                                    break;
+                                }
+                            }
+                            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                            Err(e) => return Err(e),
+                        }
+                    }
+
+                    self.buffer.extend_from_slice(&temp_buf[..total_read]);
+                    self.buffer_start = start;
+                    self.buffer_end = start + total_read as u64;
+                    return Ok(());
                 }
-                Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-                Err(e) => return Err(e),
+                Err(e) => {
+                    retry_count += 1;
+                    if retry_count == max_retries {
+                        return Err(io::Error::new(io::ErrorKind::Other, e));
+                    }
+                    std::thread::sleep(Duration::from_secs(2 * retry_count as u64));
+                }
             }
         }
 
-        self.buffer.extend_from_slice(&temp_buf[..total_read]);
-        self.buffer_start = start;
-        self.buffer_end = start + total_read as u64;
-
-        Ok(())
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            "Failed to fill buffer after maximum retries",
+        ))
     }
 }
 impl Read for HttpReader {
