@@ -1422,9 +1422,9 @@ fn dump_partition(
     let progress_bar = if let Some(mp) = multi_progress {
         let pb = mp.add(ProgressBar::new(100));
         pb.set_style(ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {percent}% - {msg}")
+            .template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/white}] {percent}% - {msg}")
             .unwrap()
-            .progress_chars("-> "));
+            .progress_chars("▰▱"));
         pb.enable_steady_tick(Duration::from_millis(500));
         pb.set_message(format!("Processing {} ({} ops)", partition_name, total_ops));
         Some(pb)
