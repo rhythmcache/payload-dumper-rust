@@ -9,6 +9,11 @@ Android OTA payload dumper written in Rust utilising c libraries
 
 - All decompression processes run in parallel for improved performance. ( can be customised by using`--no-parallel` or `--threads <n>` as argument )
 
+- Output partitions Verification ✅
+- Parallel Extraction of direct zip/payload files ✅
+- Selective Partition Extraction ✅
+- Direct Extraction from URL ✅
+
 
 
 Here are some performance metrics from a **Poco X4 Pro (SD695, 8GB RAM)** running in Termux:
