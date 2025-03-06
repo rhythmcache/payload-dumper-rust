@@ -53,6 +53,8 @@ Here are some performance metrics from a **Poco X4 Pro (SD695, 8GB RAM)** runnin
 
 - **Remote URL Extraction**:  
   <img src="./Screenshot_20250304-180030_Termux.png" width="75%">
+  
+---
 
 ### Usage :
 #### Basic Usage
