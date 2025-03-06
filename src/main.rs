@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use attohttpc;
 use byteorder::{BigEndian, ReadBytesExt};
 use bzip2::read::BzDecoder;
@@ -23,6 +23,10 @@ use std::os::raw::{c_char, c_int, c_uint, c_void};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use trust_dns_resolver::{
+    config::{ResolverConfig, ResolverOpts},
+    Resolver,
+};
 use url;
 
 trait ReadSeek: Read + Seek {}
@@ -417,6 +421,7 @@ impl Clone for HttpReader {
         }
     }
 }
+
 impl HttpReader {
     fn new(url: String) -> Result<Self> {
         Self::new_internal(url, true)
@@ -428,11 +433,7 @@ impl HttpReader {
 
     fn new_internal(url: String, print_size: bool) -> Result<Self> {
         let mut client = attohttpc::Session::new();
-
-        // Increase timeout for slower connections
         client.timeout(Duration::from_secs(600));
-
-        // Set more resilient headers
         client.header("Accept-Encoding", "*");
         client.header("Accept", "*/*");
         client.header("User-Agent", "Mozilla/5.0");
@@ -445,11 +446,9 @@ impl HttpReader {
         } else {
             url
         };
-
-        // Validate URL
+        
         let parsed_url = url::Url::parse(&url).map_err(|e| anyhow!("Invalid URL: {}", e))?;
-
-        // try multiple ways to validate connectivity
+        
         let host = parsed_url
             .host_str()
             .ok_or_else(|| anyhow!("No host in URL"))?;
@@ -460,41 +459,20 @@ impl HttpReader {
             } else {
                 80
             });
-
-        // Try different DNS resolution methods
-        let mut resolved = false;
-
-        // Method 1: Try system resolver
-        if let Ok(_) = std::net::ToSocketAddrs::to_socket_addrs(&format!("{}:{}", host, port)) {
-            resolved = true;
-        }
-
-        // Method 2: Try direct IP connection if host is an IP
-        if !resolved {
-            if let Ok(_) = host.parse::<std::net::IpAddr>() {
-                resolved = true;
-            }
-        }
-
-        // Method 3: try explicit DNS lookup using system resolver
-        if !resolved {
-            #[cfg(unix)]
-            {
-                use std::process::Command;
-                if let Ok(output) = Command::new("getent").args(&["hosts", host]).output() {
-                    if output.status.success() {
-                        resolved = true;
-                    }
-                }
-            }
-        }
-
-        if !resolved {
+            
+        let resolver = Resolver::new(ResolverConfig::default(), ResolverOpts::default())
+            .map_err(|e| anyhow!("Failed to initialize DNS resolver: {}", e))?;
+        let resolved_ips = resolver
+            .lookup_ip(host)
+            .map_err(|e| anyhow!("DNS resolution failed: {}", e))?;
+            
+        if resolved_ips.iter().next().is_none() {
             return Err(anyhow!(
-                "Failed to resolve hostname: {}. Please check your network connection and DNS settings.",
+                "Failed to resolve hostname: {}. Please check your network/DNS settings.",
                 host
             ));
         }
+        
         let mut retry_count = 0;
         let max_retries = 3;
         let mut last_error = None;
@@ -622,6 +600,7 @@ impl HttpReader {
         ))
     }
 }
+
 impl Read for HttpReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if self.position >= self.content_length {
@@ -1829,7 +1808,7 @@ fn main() -> Result<()> {
             }
         }
     } else {
-         let mut success_or_what = true;
+        let mut success_or_what = true;
         for partition in partitions_to_extract {
             if let Err(e) = dump_partition(
                 partition,
@@ -1861,4 +1840,4 @@ fn main() -> Result<()> {
         }
     }
     Ok(())
-}    
+}
