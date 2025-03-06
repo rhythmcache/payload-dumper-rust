@@ -29,7 +29,7 @@ Android OTA payload dumper written in Rust.
   ```
   
 
-
+---
 
 Here are some performance metrics from a **Poco X4 Pro (SD695, 8GB RAM)** running in Termux:
 
@@ -108,11 +108,12 @@ Arguments:
   --metadata  
       Save payload metadata as JSON.
 ```
-
+---
 #### Dependencies :
 - See [Cargo.toml](./Cargo.toml)
 - - [update_metadata.proto](https://android.googlesource.com/platform/system/update_engine/+/HEAD/update_metadata.proto)
 
+---
 
 #### Build :
 To build this , you'll need:
@@ -121,7 +122,8 @@ To build this , you'll need:
 - Other obvious dependencies
 - You may also need to link against libzip, zlib, and liblzma.
 
-  
+---
+
 - ***To Build On Termux , Simply Run***
 ```
 bash <(curl -L "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/termux-build.sh")
