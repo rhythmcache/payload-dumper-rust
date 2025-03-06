@@ -111,6 +111,7 @@ Arguments:
 
 #### Dependencies :
 - See [Cargo.toml](./Cargo.toml)
+- - [update_metadata.proto](https://android.googlesource.com/platform/system/update_engine/+/HEAD/update_metadata.proto)
 
 
 #### Build :
@@ -129,4 +130,3 @@ bash <(curl -L "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rus
 
 ### Credits
 - This tool is inspired from [vm03/payload_dumper](https://github.com/vm03/payload_dumper)
-- [update_metadata.proto](https://android.googlesource.com/platform/system/update_engine/+/HEAD/update_metadata.proto)
