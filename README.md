@@ -1,6 +1,9 @@
 # payload-dumper-rust
-Android OTA payload dumper written in Rust utilising c libraries
+Android OTA payload dumper written in Rust.
 
+### What is Payload?
+
+-  Android payload is a file that contains ROM partitions like boot , system, vendor . and others. Payload Dumper extracts these partitions from the payload.bin file
 
 ## features
 - Extracts all or individual images directly from payload.bin or ROM ZIP files with minimal time difference.
@@ -15,6 +18,16 @@ Android OTA payload dumper written in Rust utilising c libraries
 - Selective Partition Extraction ✅
 - Direct Extraction from URL ✅
 ---
+
+## How To Use 
+- Download Binaries for your respective Platform from [releases section](https://github.com/rhythmcache/payload-dumper-rust/releases/tag/0.2.0)
+- If you are using a rooted android device you might want to install it as a [magisk module](https://github.com/rhythmcache/payload-dumper-rust/releases/download/0.2.0/payload_dumper-android-magisk-module.zip)
+
+- For unrooted Android - run this in termux to install it
+  ```
+  bash <(curl -L "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/termux-install.sh")
+  ```
+  
 
 
 
@@ -114,5 +127,6 @@ bash <(curl -L "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rus
 ```
 
 
-### Acknowledgements
+### Credits
 - This tool is inspired from [vm03/payload_dumper](https://github.com/vm03/payload_dumper)
+- [update_metadata.proto](https://android.googlesource.com/platform/system/update_engine/+/HEAD/update_metadata.proto)
