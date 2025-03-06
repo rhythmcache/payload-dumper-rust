@@ -23,10 +23,6 @@ use std::os::raw::{c_char, c_int, c_uint, c_void};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use trust_dns_resolver::{
-    config::{ResolverConfig, ResolverOpts},
-    Resolver,
-};
 use url;
 
 trait ReadSeek: Read + Seek {}
@@ -422,6 +418,8 @@ impl Clone for HttpReader {
     }
 }
 
+
+
 impl HttpReader {
     fn new(url: String) -> Result<Self> {
         Self::new_internal(url, true)
@@ -441,38 +439,11 @@ impl HttpReader {
         client.header("Connection", "keep-alive");
         client.header("Cache-Control", "no-transform");
 
-        let url = if url.contains(' ') {
-            url.replace(' ', "%20")
-        } else {
-            url
-        };
-        
         let parsed_url = url::Url::parse(&url).map_err(|e| anyhow!("Invalid URL: {}", e))?;
         
-        let host = parsed_url
-            .host_str()
-            .ok_or_else(|| anyhow!("No host in URL"))?;
-        let port = parsed_url
-            .port()
-            .unwrap_or(if parsed_url.scheme() == "https" {
-                443
-            } else {
-                80
-            });
-            
-        let resolver = Resolver::new(ResolverConfig::default(), ResolverOpts::default())
-            .map_err(|e| anyhow!("Failed to initialize DNS resolver: {}", e))?;
-        let resolved_ips = resolver
-            .lookup_ip(host)
-            .map_err(|e| anyhow!("DNS resolution failed: {}", e))?;
-            
-        if resolved_ips.iter().next().is_none() {
-            return Err(anyhow!(
-                "Failed to resolve hostname: {}.",
-                host
-            ));
-        }
-        
+        let _host = parsed_url.host_str().ok_or_else(|| anyhow!("No host in URL"))?;
+        let _port = parsed_url.port().unwrap_or(if parsed_url.scheme() == "https" { 443 } else { 80 });
+
         let mut retry_count = 0;
         let max_retries = 3;
         let mut last_error = None;
@@ -480,14 +451,12 @@ impl HttpReader {
         while retry_count < max_retries {
             match client.head(&url).send() {
                 Ok(response) => {
-                    let content_type = response
-                        .headers()
+                    let content_type = response.headers()
                         .get("content-type")
                         .and_then(|v| v.to_str().ok())
                         .map(|s| s.to_string());
 
-                    let content_length = response
-                        .headers()
+                    let content_length = response.headers()
                         .get("content-length")
                         .and_then(|v| v.to_str().ok())
                         .and_then(|v| v.parse::<u64>().ok())
@@ -540,25 +509,18 @@ impl HttpReader {
         let max_retries = 3;
 
         while retry_count < max_retries {
-            match self
-                .client
-                .get(&self.url)
-                .header("Range", &range)
+            match self.client.get(&self.url)
+                .header("Range", range.clone())
                 .header("Connection", "keep-alive")
                 .header("Cache-Control", "no-transform")
                 .send()
             {
                 Ok(mut response) => {
                     if !response.status().is_success() {
-                        retry_count += 1;
-                        if retry_count == max_retries {
-                            return Err(io::Error::new(
-                                io::ErrorKind::Other,
-                                format!("Failed to access URL range: {}", response.status()),
-                            ));
-                        }
-                        std::thread::sleep(Duration::from_secs(2 * retry_count as u64));
-                        continue;
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            format!("Failed to access URL range: {}", response.status()),
+                        ));
                     }
 
                     self.buffer.clear();
@@ -600,6 +562,7 @@ impl HttpReader {
         ))
     }
 }
+
 
 impl Read for HttpReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
