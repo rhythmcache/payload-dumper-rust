@@ -468,7 +468,7 @@ impl HttpReader {
             
         if resolved_ips.iter().next().is_none() {
             return Err(anyhow!(
-                "Failed to resolve hostname: {}. Please check your network/DNS settings.",
+                "Failed to resolve hostname: {}.",
                 host
             ));
         }
