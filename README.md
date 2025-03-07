@@ -6,7 +6,7 @@ Android OTA payload dumper written in Rust.
 -  Android payload is a file that contains ROM partitions like boot , system, vendor . and others. Payload Dumper extracts these partitions from the payload.bin file
 
 ## features
-- Extracts all or individual images directly from payload.bin or ROM ZIP files with minimal time difference.
+- Extracts all or individual images directly from payload.bin or ROM ZIP file.
 
 - Supports extracting individual partitions from URLs without downloading the full ROM ZIP.
 
