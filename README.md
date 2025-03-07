@@ -62,14 +62,14 @@ Here are some performance metrics from a **Poco X4 Pro (SD695, 8GB RAM)** runnin
 To extract partitions from a payload file, run the following command:
 
 ```bash
-payload-dumper <path/to/payload.bin> --out output_directory
+payload_dumper <path/to/payload.bin> --out output_directory
 ```
 #### Direct ZIP Processing
 
 it can directly process payloads from ZIP files without requiring manual extraction. Simply provide the path to the ZIP file:
 
 ```bash
-./payload-dumper <path/to/ota.zip> --out <output_directory>
+./payload_dumper <path/to/ota.zip> --out <output_directory>
 ```
 
 #### Remote Payloads
@@ -78,7 +78,7 @@ it can also handle payloads/zips directly using url.  Simply provide the URL as 
 extraction though.
 
 ```bash
-./payload-dumper https://example.com/payload.bin
+./payload_dumper https://example.com/payload.bin
 ```
 #### Individual partitions extraction.
 
