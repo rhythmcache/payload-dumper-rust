@@ -82,13 +82,16 @@ extraction though.
 ```
 #### Individual partitions extraction.
 
-to extract individual partitions from payloads/URL/zips , use `--images` and enter the name of partitions you want to extract comma-separated.
-
+- to extract individual partitions from payloads/URL/zips , use `--images` and enter the name of partitions you want to extract comma-separated.
+- 
 for example to just extract `boot` and `vendor_boot` from `url/zip/payload` , simply run
 
 ```
 payload_dumper --images boot,vendor_boot <https://example.com/zip>
 ```
+
+--- 
+
 ```
 Usage: payload_dumper [OPTIONS] <PAYLOAD_PATH>
 
