@@ -17,6 +17,7 @@ Android OTA payload dumper written in Rust.
 - Parallel Extraction of direct zip/payload files ✅
 - Selective Partition Extraction ✅
 - Direct Extraction from URL ✅
+- Incremental OTA support ❓ ( not tested )
 ---
 
 ## How To Use 
@@ -31,18 +32,17 @@ Android OTA payload dumper written in Rust.
 
 ---
 
-Here are some performance metrics from a **Poco X4 Pro (SD695, 8GB RAM)** running in Termux:
+## **Performance Metrics** ⚡
 
+- Here are the performance metrics for **Payload Dumper Rust** running on a **Poco X4 Pro (SD695, 8GB RAM)** in Termux. The test file used is [comet-ota-ad1a.240530.030-98066022.zip](https://dl.google.com/dl/android/aosp/comet-ota-ad1a.240530.030-98066022.zip) (2.53GB).
 
-- payload/zip file used :- [comet-ota-ad1a.240530.030-98066022.zip](https://dl.google.com/dl/android/aosp/comet-ota-ad1a.240530.030-98066022.zip) (2.53GB)
+| **Extraction Method**       | **Time Taken**       | **Notes**                          |
+|-----------------------------|----------------------|------------------------------------|
+| **Direct Payload Extraction** | **2 minutes 26 seconds** | Extracting directly from `payload.bin`. |
+| **ZIP File Extraction**      | **2 minutes 30 seconds** | Extracting directly from the ZIP file. |
+| **Remote URL Extraction**    | **Slower**           | Depends on network speed.          |
 
-- **Direct Payload Extraction**: Extracting partitions directly from the `payload.bin` took **2 minutes 26 seconds**.
-
-- **ZIP File Extraction**: Extracting partitions directly from the ZIP file took **2 minutes 30 seconds**, just **4 seconds difference**
-
-- It can also extract partition directly from **URL** without having you to download the full rom zip file
-
-
+---
 
 ### Screenshots
 - **Direct Payload Extraction**:  
@@ -106,9 +106,9 @@ Arguments:
   --threads <THREADS>  
       Number of threads to use for parallel processing.
   --list  
-      List available partitions in the payload.
-  --metadata  
-      Save payload metadata as JSON.
+      List available partitions in the payload and save metadata json
+  --no-parallel
+      Disable parallel Extraction
 ```
 ---
 #### Dependencies :
