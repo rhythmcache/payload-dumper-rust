@@ -118,7 +118,8 @@ struct Args {
     #[arg(
         long,
         default_value = "",
-        help = "Comma-separated list of partition names to extract (default: all partitions)"
+        hide_default_value = true,
+        help = "Comma-separated list of partition names to extract"
     )]
     images: String,
 
@@ -136,11 +137,11 @@ struct Args {
     #[arg(
         long,
         conflicts_with_all = &["out", "diff", "old", "images", "threads", "decompress_mode"],
-        help = "List available partitions in the payload"
+        help = "List available partitions in the payload and save metadata as JSON"
     )]
     list: bool,
 
-    #[arg(long, help = "Save payload metadata as JSON")]
+    #[arg(long, hide = true, help = "Save payload metadata as JSON")]
     metadata: bool,
 
     #[arg(
@@ -418,8 +419,6 @@ impl Clone for HttpReader {
     }
 }
 
-
-
 impl HttpReader {
     fn new(url: String) -> Result<Self> {
         Self::new_internal(url, true)
@@ -440,9 +439,17 @@ impl HttpReader {
         client.header("Cache-Control", "no-transform");
 
         let parsed_url = url::Url::parse(&url).map_err(|e| anyhow!("Invalid URL: {}", e))?;
-        
-        let _host = parsed_url.host_str().ok_or_else(|| anyhow!("No host in URL"))?;
-        let _port = parsed_url.port().unwrap_or(if parsed_url.scheme() == "https" { 443 } else { 80 });
+
+        let _host = parsed_url
+            .host_str()
+            .ok_or_else(|| anyhow!("No host in URL"))?;
+        let _port = parsed_url
+            .port()
+            .unwrap_or(if parsed_url.scheme() == "https" {
+                443
+            } else {
+                80
+            });
 
         let mut retry_count = 0;
         let max_retries = 3;
@@ -451,12 +458,14 @@ impl HttpReader {
         while retry_count < max_retries {
             match client.head(&url).send() {
                 Ok(response) => {
-                    let content_type = response.headers()
+                    let content_type = response
+                        .headers()
                         .get("content-type")
                         .and_then(|v| v.to_str().ok())
                         .map(|s| s.to_string());
 
-                    let content_length = response.headers()
+                    let content_length = response
+                        .headers()
                         .get("content-length")
                         .and_then(|v| v.to_str().ok())
                         .and_then(|v| v.parse::<u64>().ok())
@@ -509,7 +518,9 @@ impl HttpReader {
         let max_retries = 3;
 
         while retry_count < max_retries {
-            match self.client.get(&self.url)
+            match self
+                .client
+                .get(&self.url)
                 .header("Range", range.clone())
                 .header("Connection", "keep-alive")
                 .header("Cache-Control", "no-transform")
@@ -562,7 +573,6 @@ impl HttpReader {
         ))
     }
 }
-
 
 impl Read for HttpReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
