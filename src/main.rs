@@ -89,11 +89,55 @@ struct PartitionMetadata {
     encryption: String,
     block_size: u64,
     total_blocks: u64,
+    run_postinstall: Option<bool>,
+    postinstall_path: Option<String>,
+    filesystem_type: Option<String>,
+    postinstall_optional: Option<bool>,
+    hash_tree_algorithm: Option<String>,
+    version: Option<String>,
+}
+
+#[derive(Serialize)]
+struct DynamicPartitionGroupInfo {
+    name: String,
+    size: Option<u64>,
+    partition_names: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct VabcFeatureSetInfo {
+    threaded: Option<bool>,
+    batch_writes: Option<bool>,
+}
+
+#[derive(Serialize)]
+struct DynamicPartitionInfo {
+    groups: Vec<DynamicPartitionGroupInfo>,
+    snapshot_enabled: Option<bool>,
+    vabc_enabled: Option<bool>,
+    vabc_compression_param: Option<String>,
+    cow_version: Option<u32>,
+    vabc_feature_set: Option<VabcFeatureSetInfo>,
+    compression_factor: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct ApexInfoMetadata {
+    package_name: Option<String>,
+    version: Option<i64>,
+    is_compressed: Option<bool>,
+    decompressed_size: Option<i64>,
 }
 
 #[derive(Serialize)]
 struct PayloadMetadata {
     security_patch_level: Option<String>,
+    block_size: u32,
+    minor_version: u32,
+    max_timestamp: Option<i64>,
+    dynamic_partition_metadata: Option<DynamicPartitionInfo>,
+    partial_update: Option<bool>,
+    apex_info: Vec<ApexInfoMetadata>,
     partitions: Vec<PartitionMetadata>,
 }
 
@@ -566,7 +610,7 @@ impl HttpReader {
                 Err(e) => {
                     retry_count += 1;
                     if retry_count == max_retries {
-                        return Err(io::Error::new(io::ErrorKind::Other, e));
+                        return Err(io::Error::new(io::ErrorKind::Other, e.to_string()));
                     }
                     std::thread::sleep(Duration::from_secs(2 * retry_count as u64));
                 }
@@ -1026,12 +1070,12 @@ fn list_partitions(payload_reader: &mut Box<dyn ReadSeek>) -> Result<()> {
     let mut manifest = vec![0u8; manifest_size as usize];
     payload_reader.read_exact(&mut manifest)?;
     let manifest = DeltaArchiveManifest::decode(&manifest[..])?;
-    
+
     // Display security patch level if available
     if let Some(security_patch) = &manifest.security_patch_level {
         println!("\nSecurity Patch Level: {}\n", security_patch);
     }
-    
+
     println!("{:<20} {:<15}", "Partition Name", "Size");
     println!("{}", "-".repeat(35));
     for partition in &manifest.partitions {
@@ -1535,12 +1579,66 @@ fn save_metadata(
                 encryption: encryption.to_string(),
                 block_size,
                 total_blocks,
+                run_postinstall: partition.run_postinstall.clone(),
+                postinstall_path: partition.postinstall_path.clone(),
+                filesystem_type: partition.filesystem_type.clone(),
+                postinstall_optional: partition.postinstall_optional.clone(),
+                hash_tree_algorithm: partition.hash_tree_algorithm.clone(),
+                version: partition.version.clone(),
             });
         }
     }
 
+    // Convert dynamic partition metadata if available
+    let dynamic_partition_metadata = if let Some(dpm) = &manifest.dynamic_partition_metadata {
+        let groups: Vec<DynamicPartitionGroupInfo> = dpm
+            .groups
+            .iter()
+            .map(|group| DynamicPartitionGroupInfo {
+                name: group.name.clone(),
+                size: group.size,
+                partition_names: group.partition_names.clone(),
+            })
+            .collect();
+
+        let vabc_feature_set = dpm.vabc_feature_set.as_ref().map(|fs| VabcFeatureSetInfo {
+            threaded: fs.threaded,
+            batch_writes: fs.batch_writes,
+        });
+
+        Some(DynamicPartitionInfo {
+            groups,
+            snapshot_enabled: dpm.snapshot_enabled,
+            vabc_enabled: dpm.vabc_enabled,
+            vabc_compression_param: dpm.vabc_compression_param.clone(),
+            cow_version: dpm.cow_version,
+            vabc_feature_set,
+            compression_factor: dpm.compression_factor,
+        })
+    } else {
+        None
+    };
+
+    // Convert APEX info
+    let apex_info: Vec<ApexInfoMetadata> = manifest
+        .apex_info
+        .iter()
+        .map(|info| ApexInfoMetadata {
+            package_name: info.package_name.clone(),
+            version: info.version,
+            is_compressed: info.is_compressed,
+            decompressed_size: info.decompressed_size,
+        })
+        .collect();
+
     let payload_metadata = PayloadMetadata {
         security_patch_level: manifest.security_patch_level.clone(),
+        block_size: manifest.block_size.unwrap_or(4096),
+        minor_version: manifest.minor_version.unwrap_or(0),
+        max_timestamp: manifest.max_timestamp,
+        dynamic_partition_metadata,
+        partial_update: manifest.partial_update,
+        apex_info,
         partitions,
     };
 
@@ -1556,7 +1654,7 @@ fn format_elapsed_time(duration: Duration) -> String {
     let mins = (total_secs % 3600) / 60;
     let secs = total_secs % 60;
     let millis = duration.subsec_millis();
-    
+
     if hours > 0 {
         format!("{}h {}m {}.{:03}s", hours, mins, secs, millis)
     } else if mins > 0 {
@@ -1573,9 +1671,9 @@ fn main() -> Result<()> {
             .num_threads(threads)
             .build_global()?;
     }
-    
+
     let start_time = Instant::now();
-    
+
     let multi_progress = MultiProgress::new();
     let main_pb = multi_progress.add(ProgressBar::new_spinner());
     main_pb.set_style(
@@ -1645,6 +1743,8 @@ fn main() -> Result<()> {
     payload_reader.read_exact(&mut metadata_signature)?;
     let data_offset = payload_reader.stream_position()?;
     let manifest = DeltaArchiveManifest::decode(&manifest[..])?;
+
+    // Display security patch level if available
     if let Some(security_patch) = &manifest.security_patch_level {
         println!("- Security Patch: {}", security_patch);
     }
@@ -1661,11 +1761,6 @@ fn main() -> Result<()> {
             );
         }
 
-        return list_partitions(&mut payload_reader);
-    }
-    if args.list {
-        main_pb.finish_and_clear();
-        payload_reader.seek(SeekFrom::Start(0))?;
         return list_partitions(&mut payload_reader);
     }
 
@@ -1816,23 +1911,27 @@ fn main() -> Result<()> {
                 }
             }
         }
-        
+
         let elapsed_time = format_elapsed_time(start_time.elapsed());
-        
+
         if failed_partitions.is_empty() {
-            main_pb.finish_with_message(format!("Partitions Processed Successfully! (in {})", elapsed_time));
+            main_pb.finish_with_message(format!(
+                "Partitions Processed Successfully! (in {})",
+                elapsed_time
+            ));
             println!(
                 "\nExtraction completed in {}. Check the output directory: {:?}",
-                elapsed_time,
-                args.out
+                elapsed_time, args.out
             );
         } else {
-            main_pb.finish_with_message(format!("Completed with {} failed partitions. (in {})", 
-                failed_partitions.len(), elapsed_time));
+            main_pb.finish_with_message(format!(
+                "Completed with {} failed partitions. (in {})",
+                failed_partitions.len(),
+                elapsed_time
+            ));
             println!(
                 "\nExtraction completed with errors in {}. Check the output directory: {:?}",
-                elapsed_time,
-                args.out
+                elapsed_time, args.out
             );
         }
     } else {
@@ -1853,22 +1952,26 @@ fn main() -> Result<()> {
                 success_or_what = false;
             }
         }
-        
+
         let elapsed_time = format_elapsed_time(start_time.elapsed());
-        
+
         if success_or_what {
-            main_pb.finish_with_message(format!("Partitions Processed Successfully! (in {})", elapsed_time));
+            main_pb.finish_with_message(format!(
+                "Partitions Processed Successfully! (in {})",
+                elapsed_time
+            ));
             println!(
                 "\nExtraction completed in {}. Check the output directory: {:?}",
-                elapsed_time,
-                args.out
+                elapsed_time, args.out
             );
         } else {
-            main_pb.finish_with_message(format!("Partition processing completed with errors. (in {})", elapsed_time));
+            main_pb.finish_with_message(format!(
+                "Partition processing completed with errors. (in {})",
+                elapsed_time
+            ));
             println!(
                 "\nExtraction completed with errors in {}. Check the output directory: {:?}",
-                elapsed_time,
-                args.out
+                elapsed_time, args.out
             );
         }
     }
