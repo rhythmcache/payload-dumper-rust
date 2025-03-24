@@ -186,13 +186,18 @@ struct Args {
 
     #[arg(
         long,
-        conflicts_with_all = &["out", "diff", "old", "images", "threads", "decompress_mode"],
+        conflicts_with_all = &["out", "diff", "old", "images", "threads", "decompress_mode", "metadata"],
         help = "List available partitions in the payload and save metadata as JSON"
     )]
     list: bool,
 
-    #[arg(long, hide = true, help = "Save payload metadata as JSON")]
+    #[arg(
+        long,
+        help = "Save Complete Metadata as JSON",
+        conflicts_with_all = &["list", "diff", "old", "images", "decompress_mode"]
+    )]
     metadata: bool,
+
 
     #[arg(
         long,
@@ -1748,7 +1753,23 @@ fn main() -> Result<()> {
     if let Some(security_patch) = &manifest.security_patch_level {
         println!("- Security Patch: {}", security_patch);
     }
-
+    if args.metadata {
+        main_pb.set_message("Extracting metadata...");
+        if let Err(e) = save_metadata(&manifest, &args.out, data_offset) {
+            main_pb.finish_with_message("✕ Failed to save metadata");
+            eprintln!("Error saving metadata: {}", e);
+            multi_progress.clear()?;
+            return Err(e);
+        } else {
+           // main_pb.finish_with_message("✓ Metadata extraction complete");
+            println!(
+                "✓ Metadata saved at: {}/payload_metadata.json",
+                args.out.display()
+            );
+            multi_progress.clear()?;
+            return Ok(());
+        }
+    }
     if args.list {
         main_pb.finish_and_clear();
         payload_reader.seek(SeekFrom::Start(0))?;
@@ -1760,7 +1781,6 @@ fn main() -> Result<()> {
                 args.out.display()
             );
         }
-
         return list_partitions(&mut payload_reader);
     }
 
