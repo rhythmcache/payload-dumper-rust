@@ -22,7 +22,7 @@ use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use url;
 
 trait ReadSeek: Read + Seek {}
@@ -89,6 +89,12 @@ struct PartitionMetadata {
     encryption: String,
     block_size: u64,
     total_blocks: u64,
+}
+
+#[derive(Serialize)]
+struct PayloadMetadata {
+    security_patch_level: Option<String>,
+    partitions: Vec<PartitionMetadata>,
 }
 
 #[derive(Parser)]
@@ -1020,6 +1026,12 @@ fn list_partitions(payload_reader: &mut Box<dyn ReadSeek>) -> Result<()> {
     let mut manifest = vec![0u8; manifest_size as usize];
     payload_reader.read_exact(&mut manifest)?;
     let manifest = DeltaArchiveManifest::decode(&manifest[..])?;
+    
+    // Display security patch level if available
+    if let Some(security_patch) = &manifest.security_patch_level {
+        println!("\nSecurity Patch Level: {}\n", security_patch);
+    }
+    
     println!("{:<20} {:<15}", "Partition Name", "Size");
     println!("{}", "-".repeat(35));
     for partition in &manifest.partitions {
@@ -1474,7 +1486,7 @@ fn save_metadata(
     output_dir: &PathBuf,
     data_offset: u64,
 ) -> Result<()> {
-    let mut metadata = Vec::new();
+    let mut partitions = Vec::new();
     for partition in &manifest.partitions {
         if let Some(info) = &partition.new_partition_info {
             let size_in_bytes = info.size.unwrap_or(0);
@@ -1508,7 +1520,7 @@ fn save_metadata(
                 "none"
             };
 
-            metadata.push(PartitionMetadata {
+            partitions.push(PartitionMetadata {
                 partition_name: partition.partition_name.clone(),
                 size_in_blocks,
                 size_in_bytes,
@@ -1527,11 +1539,31 @@ fn save_metadata(
         }
     }
 
-    let json = serde_json::to_string_pretty(&metadata)?;
+    let payload_metadata = PayloadMetadata {
+        security_patch_level: manifest.security_patch_level.clone(),
+        partitions,
+    };
+
+    let json = serde_json::to_string_pretty(&payload_metadata)?;
     let metadata_path = output_dir.join("payload_metadata.json");
     fs::write(metadata_path, json)?;
 
     Ok(())
+}
+fn format_elapsed_time(duration: Duration) -> String {
+    let total_secs = duration.as_secs();
+    let hours = total_secs / 3600;
+    let mins = (total_secs % 3600) / 60;
+    let secs = total_secs % 60;
+    let millis = duration.subsec_millis();
+    
+    if hours > 0 {
+        format!("{}h {}m {}.{:03}s", hours, mins, secs, millis)
+    } else if mins > 0 {
+        format!("{}m {}.{:03}s", mins, secs, millis)
+    } else {
+        format!("{}.{:03}s", secs, millis)
+    }
 }
 fn main() -> Result<()> {
     let args = Args::parse();
@@ -1541,6 +1573,9 @@ fn main() -> Result<()> {
             .num_threads(threads)
             .build_global()?;
     }
+    
+    let start_time = Instant::now();
+    
     let multi_progress = MultiProgress::new();
     let main_pb = multi_progress.add(ProgressBar::new_spinner());
     main_pb.set_style(
@@ -1589,8 +1624,6 @@ fn main() -> Result<()> {
         Box::new(File::open(&args.payload_path)?) as Box<dyn ReadSeek>
     };
 
-    main_pb.set_message("Reading payload header...");
-
     fs::create_dir_all(&args.out)?;
     let mut magic = [0u8; 4];
     payload_reader.read_exact(&mut magic)?;
@@ -1612,6 +1645,9 @@ fn main() -> Result<()> {
     payload_reader.read_exact(&mut metadata_signature)?;
     let data_offset = payload_reader.stream_position()?;
     let manifest = DeltaArchiveManifest::decode(&manifest[..])?;
+    if let Some(security_patch) = &manifest.security_patch_level {
+        println!("- Security Patch: {}", security_patch);
+    }
 
     if args.list {
         main_pb.finish_and_clear();
@@ -1780,6 +1816,25 @@ fn main() -> Result<()> {
                 }
             }
         }
+        
+        let elapsed_time = format_elapsed_time(start_time.elapsed());
+        
+        if failed_partitions.is_empty() {
+            main_pb.finish_with_message(format!("Partitions Processed Successfully! (in {})", elapsed_time));
+            println!(
+                "\nExtraction completed in {}. Check the output directory: {:?}",
+                elapsed_time,
+                args.out
+            );
+        } else {
+            main_pb.finish_with_message(format!("Completed with {} failed partitions. (in {})", 
+                failed_partitions.len(), elapsed_time));
+            println!(
+                "\nExtraction completed with errors in {}. Check the output directory: {:?}",
+                elapsed_time,
+                args.out
+            );
+        }
     } else {
         let mut success_or_what = true;
         for partition in partitions_to_extract {
@@ -1798,16 +1853,21 @@ fn main() -> Result<()> {
                 success_or_what = false;
             }
         }
+        
+        let elapsed_time = format_elapsed_time(start_time.elapsed());
+        
         if success_or_what {
-            main_pb.finish_with_message("Partitions Processed Successfully!");
+            main_pb.finish_with_message(format!("Partitions Processed Successfully! (in {})", elapsed_time));
             println!(
-                "\nExtraction completed successfully. Check the output directory: {:?}",
+                "\nExtraction completed in {}. Check the output directory: {:?}",
+                elapsed_time,
                 args.out
             );
         } else {
-            main_pb.finish_with_message("Partition processing completed with errors.");
+            main_pb.finish_with_message(format!("Partition processing completed with errors. (in {})", elapsed_time));
             println!(
-                "\nExtraction completed with errors. Check the output directory: {:?}",
+                "\nExtraction completed with errors in {}. Check the output directory: {:?}",
+                elapsed_time,
                 args.out
             );
         }
