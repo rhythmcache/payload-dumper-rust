@@ -7,7 +7,7 @@ jobs:
   build:
     strategy:
       matrix:
-        architecture: [x86_64, aarch64, armv7, i686, riscv64gc]
+        architecture: [x86_64, aarch64, armv7, i686, riscv64]
       fail-fast: false
 
     runs-on: ubuntu-latest
@@ -58,10 +58,10 @@ jobs:
               echo "ARCH_DIR=x86" >> $GITHUB_ENV
               echo "NEED_CROSS=true" >> $GITHUB_ENV
               ;;
-            riscv64gc)
+            riscv64)
             echo "TARGET=riscv64gc-unknown-linux-musl" >> $GITHUB_ENV
             echo "TOOLCHAIN_URL=https://musl.cc/riscv64-linux-musl-cross.tgz" >> $GITHUB_ENV
-            echo "riscv64-linux-musl-gcc" >> $GITHUB_ENV
+            echo "CC=riscv64-linux-musl-gcc" >> $GITHUB_ENV
             echo "ARCH_DIR=riscv64" >> $GITHUB_ENV
             echo "NEED_CROSS=true" >> $GITHUB_ENV
               ;;
