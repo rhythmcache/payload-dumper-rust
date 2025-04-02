@@ -46,7 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else if target.contains("riscv64") {
             println!("cargo:rustc-link-search=native={}/lib/musl/riscv64", manifest_dir);
             println!("cargo:warning=Building for musl riscv64 architecture");
-            println!("cargo:rustc-link-arg=-Wl,-z,notext");
+            // println!("cargo:rustc-link-arg=-Wl,-z,notext");
         } else {
             println!("cargo:warning=Building for unknown musl architecture: {}", target);
             println!("cargo:rustc-link-search=native={}/lib", manifest_dir);
