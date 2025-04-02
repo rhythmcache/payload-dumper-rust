@@ -1,1 +1,1 @@
-- precompiled libs to link with binary , some of them are manually compiled while some are taken from `Termux`
+- precompiled libs to link with binary , some of them are manually compiled while some are taken from `Termux` and `mingw`
