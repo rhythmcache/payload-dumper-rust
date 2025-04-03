@@ -1,0 +1,133 @@
+name: Android Build
+
+on:
+  workflow_dispatch:
+
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [aarch64, armv7, x86_64, x86]
+        include:
+          - arch: aarch64
+            target: aarch64-linux-android
+            lib_dir: arm64-v8a
+            android_abi: arm64-v8a
+            clang_target: aarch64-linux-android21-clang
+          - arch: armv7
+            target: armv7-linux-androideabi
+            lib_dir: armv7
+            android_abi: armeabi-v7a
+            clang_target: armv7a-linux-androideabi21-clang
+          - arch: x86_64
+            target: x86_64-linux-android
+            lib_dir: x86_64
+            android_abi: x86_64
+            clang_target: x86_64-linux-android21-clang
+          - arch: x86
+            target: i686-linux-android
+            lib_dir: x86
+            android_abi: x86
+            clang_target: i686-linux-android21-clang
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          protoc --version
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+          target: ${{ matrix.target }}
+
+      - name: Install Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+          add-to-path: true
+
+      - name: Set up environment
+        run: |
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+          echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
+        
+          sudo ln -sf $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.clang_target }} $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.arch }}-linux-android-clang
+        
+          echo "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+
+          echo "PKG_CONFIG_PATH=${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}" >> $GITHUB_ENV
+          echo "LIBRARY_PATH=${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}" >> $GITHUB_ENV
+
+          ARCH_UPPER=$(echo "${{ matrix.arch }}" | tr '[:lower:]' '[:upper:]')
+          echo "CARGO_TARGET_${ARCH_UPPER}_LINUX_ANDROID_LINKER=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.clang_target }}" >> $GITHUB_ENV
+
+          if [ "${{ matrix.arch }}" = "x86" ]; then
+            echo "CC_i686_linux_android=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.clang_target }}" >> $GITHUB_ENV
+            echo "AR_i686_linux_android=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar" >> $GITHUB_ENV
+            sudo ln -sf $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.clang_target }} $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android-clang
+          fi
+
+          if [ "${{ matrix.arch }}" = "armv7" ]; then
+            echo "CC_arm_linux_androideabi=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.clang_target }}" >> $GITHUB_ENV
+            sudo ln -sf $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.clang_target }} $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/arm-linux-androideabi-clang
+            sudo ln -sf $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.clang_target }} $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7-linux-androideabi-clang
+          fi
+
+          mkdir -p ${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}
+          ls -la ${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}/*.a || echo "No .a files found"
+
+          # Create .cargo/config.toml
+          mkdir -p .cargo
+          cat > .cargo/config.toml << EOF
+          [target.${{ matrix.target }}]
+          linker = "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.clang_target }}"
+          rustflags = [
+            "-L", "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/${{ matrix.target }}/21",
+            "-L", "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/${{ matrix.target }}",
+            "-L", "${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}",
+            "-l", "log",
+            "-l", "android"
+          ]
+          EOF
+
+      - name: Build for Android ${{ matrix.arch }}
+        run: |
+          export RUSTFLAGS="-C link-arg=-fuse-ld=lld \
+            -L $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/${{ matrix.target }}/21 \
+            -L $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/${{ matrix.target }} \
+            -L ${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}"
+          
+          cargo build --release --target ${{ matrix.target }}
+        env:
+          PKG_CONFIG_ALLOW_CROSS: 1
+          CFLAGS_${{ matrix.arch }}_linux_android: "-O3 -target ${{ matrix.target }}21"
+          CFLAGS_i686_linux_android: "-O3 -target i686-linux-android21"
+          CFLAGS_arm_linux_androideabi: "-O3 -target armv7a-linux-androideabi21"
+
+      - name: Verify binary
+        run: |
+          file target/${{ matrix.target }}/release/payload_dumper
+          ls -lh target/${{ matrix.target }}/release/payload_dumper
+
+      - name: Create artifact directory
+        run: mkdir -p artifacts/${{ matrix.android_abi }}
+
+      - name: Copy binaries
+        run: |
+          cp target/${{ matrix.target }}/release/payload_dumper ./artifacts/${{ matrix.android_abi }}/
+          chmod +x ./artifacts/${{ matrix.android_abi }}/payload_dumper
+
+      - name: Upload Binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: payload_dumper-android-${{ matrix.android_abi }}
+          path: artifacts/${{ matrix.android_abi }}/payload_dumper
+          if-no-files-found: error

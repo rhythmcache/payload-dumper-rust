@@ -1,0 +1,10 @@
+prefix=${PWD}/lib/armv7
+exec_prefix=${prefix}
+libdir=${exec_prefix}
+includedir=${prefix}
+
+Name: liblzma
+Description: XZ (LZMA) compression library
+Version: 5.4.0
+Libs: -L${libdir} -llzma
+Cflags: -I${includedir}

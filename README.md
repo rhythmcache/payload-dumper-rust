@@ -14,19 +14,19 @@ Android OTA payload dumper written in Rust.
 
 ---
 - Output partitions Verification ✅
-- Parallel Extraction of direct zip/payload files ✅
+- Parallel Extraction ✅
 - Selective Partition Extraction ✅
 - Direct Extraction from URL ✅
 - Incremental OTA support ❓ ( not tested )
 ---
 
 ## How To Use 
-- Download Binaries for your respective Platform from [releases section](https://github.com/rhythmcache/payload-dumper-rust/releases/tag/0.2.0)
-- If you are using a rooted android device you might want to install it as a [magisk module](https://github.com/rhythmcache/payload-dumper-rust/releases/download/0.2.0/payload_dumper-android-magisk-module.zip)
+- Download Binaries for your respective Platform from [releases section](https://github.com/rhythmcache/payload-dumper-rust/releases/tag/0.3.0)
+- If you are using a rooted android device you might want to install it as a [magisk module](https://github.com/rhythmcache/payload-dumper-rust/releases/download/0.3.0/payload_dumper-android-magisk-module.zip)
 
 - For unrooted Android - run this in termux to install it
   ```
-  bash <(curl -L "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/termux-install.sh")
+  bash <(curl -L "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/termux-install.sh")
   ```
   
 
@@ -46,13 +46,13 @@ Android OTA payload dumper written in Rust.
 
 ### Screenshots
 - **Direct Payload Extraction**:  
-  <img src="./Screenshot_20250304-175923_Termux.png" width="75%">
+  <img src="./photos/Screenshot_20250304-175923_Termux.png" width="75%">
 
 - **ZIP File Extraction**:  
-  <img src="./Screenshot_20250304-175502_Termux.png" width="75%">
+  <img src="./photos/Screenshot_20250304-175502_Termux.png" width="75%">
 
 - **Remote URL Extraction**:  
-  <img src="./Screenshot_20250304-180030_Termux.png" width="75%">
+  <img src="./photos/Screenshot_20250304-180030_Termux.png" width="75%">
   
 ---
 
@@ -109,7 +109,11 @@ Arguments:
   --threads <THREADS>  
       Number of threads to use for parallel processing.
   --list  
-      List available partitions in the payload and save metadata json
+      List available partitions
+  --metadata
+      Save complete metadata as json
+  --no-verify
+      Skip Hash Verification    
   --no-parallel
       Disable parallel Extraction
 ```
@@ -131,7 +135,7 @@ To build this , you'll need:
 
 - ***To Build On Termux , Simply Run***
 ```
-bash <(curl -L "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/termux-build.sh")
+bash <(curl -L "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/termux-build.sh")
 ```
 
 
