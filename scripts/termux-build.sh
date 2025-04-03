@@ -26,7 +26,7 @@ install_package rust cmake zlib-static zlib pkg-config libzip liblzma liblzma-st
 mkdir -p "$curr/payload-dumper-rust/src" "$curr/payload-dumper-rust/proto"
 
 curl -L -o "$curr/payload-dumper-rust/Cargo.toml" "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/Cargo.toml"
-sed -i 's/edition = "2024"/edition = "2021"/g' "$curr/payload-dumper-rust/Cargo.toml"
+sed -i 's/edition *= *"2024"/edition = "2021"/g' "$curr/payload-dumper-rust/Cargo.toml"
 curl -L -o "$curr/payload-dumper-rust/src/main.rs" "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/src/main.rs"
 curl -L -o "$curr/payload-dumper-rust/proto/update_metadata.proto" "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/proto/update_metadata.proto"
 
