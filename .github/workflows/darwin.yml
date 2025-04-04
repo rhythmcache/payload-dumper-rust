@@ -1,0 +1,273 @@
+name: macOS Builds
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        architecture: [x86_64, arm64]
+      fail-fast: false
+
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install protoc
+        run: |
+          brew install protobuf
+          protoc --version
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Set target
+        id: set-target
+        run: |
+          case "${{ matrix.architecture }}" in
+            x86_64)
+              echo "TARGET=x86_64-apple-darwin" >> $GITHUB_ENV
+              ;;
+            arm64)
+              echo "TARGET=aarch64-apple-darwin" >> $GITHUB_ENV
+              ;;
+          esac
+          
+      - name: Add Rust target
+        run: |
+          if [ "${{ matrix.architecture }}" = "x86_64" ]; then
+            rustup target add x86_64-apple-darwin
+          else
+            rustup target add aarch64-apple-darwin
+          fi
+
+      - name: Create library directories
+        run: |
+          mkdir -p ${{ github.workspace }}/lib/darwin/${{ matrix.architecture }}
+          mkdir -p ${{ github.workspace }}/build/zlib
+          mkdir -p ${{ github.workspace }}/build/libzip
+          mkdir -p ${{ github.workspace }}/build/liblzma
+
+      - name: Download and extract zlib
+        run: |
+          cd ${{ github.workspace }}/build/zlib
+          curl -L https://zlib.net/zlib-1.3.1.tar.gz -o zlib.tar.gz
+          tar -xzf zlib.tar.gz --strip-components=1
+
+      - name: Build zlib
+        run: |
+          cd ${{ github.workspace }}/build/zlib
+          
+          # Configure with the correct architecture
+          ARCH="${{ matrix.architecture }}"
+          if [ "$ARCH" = "arm64" ]; then
+            export CFLAGS="-arch arm64"
+            export LDFLAGS="-arch arm64"
+            export ARCHFLAGS="-arch arm64"
+          else
+            export CFLAGS="-arch x86_64"
+            export LDFLAGS="-arch x86_64"
+            export ARCHFLAGS="-arch x86_64"
+          fi
+          
+          # Ensure we're using the right architecture
+          echo "Building zlib for architecture: $ARCH with CFLAGS=$CFLAGS"
+          
+          ./configure --prefix=${{ github.workspace }}/lib/darwin/${{ matrix.architecture }} --static
+          make -j$(sysctl -n hw.ncpu)
+          make install
+          
+          # Verify the built library architecture
+          file ${{ github.workspace }}/lib/darwin/${{ matrix.architecture }}/lib/libz.a
+
+      # Download and compile liblzma (only for x86_64)
+      - name: Download and extract liblzma
+        if: matrix.architecture == 'x86_64'
+        run: |
+          cd ${{ github.workspace }}/build/liblzma
+          curl -L https://github.com/tukaani-project/xz/releases/download/v5.8.1/xz-5.8.1.tar.gz -o liblzma.tar.gz
+          tar -xzf liblzma.tar.gz --strip-components=1
+          
+      - name: Build liblzma
+        if: matrix.architecture == 'x86_64'
+        run: |
+          cd ${{ github.workspace }}/build/liblzma
+          
+          # Set flags for x86_64 architecture
+          export CFLAGS="-arch x86_64"
+          export LDFLAGS="-arch x86_64"
+          export ARCHFLAGS="-arch x86_64"
+          
+          echo "Building liblzma for x86_64 with CFLAGS=$CFLAGS"
+          
+          ./configure --prefix=${{ github.workspace }}/lib/darwin/x86_64 --disable-shared --enable-static
+          make -j$(sysctl -n hw.ncpu)
+          make install
+          
+          # Verify the built library architecture
+          file ${{ github.workspace }}/lib/darwin/x86_64/lib/liblzma.a
+
+      - name: Download and extract libzip
+        run: |
+          cd ${{ github.workspace }}/build/libzip
+          curl -L https://libzip.org/download/libzip-1.11.3.tar.xz -o libzip.tar.xz
+          tar -xf libzip.tar.xz --strip-components=1
+
+      - name: Build libzip
+        run: |
+          cd ${{ github.workspace }}/build/libzip
+          
+          # Use the correct architecture
+          if [ "${{ matrix.architecture }}" = "arm64" ]; then
+            export CFLAGS="-arch arm64"
+            export LDFLAGS="-arch arm64"
+            export CMAKE_OSX_ARCHITECTURES="arm64"
+            ENABLE_LZMA="OFF"
+          else
+            export CFLAGS="-arch x86_64"
+            export LDFLAGS="-arch x86_64"
+            export CMAKE_OSX_ARCHITECTURES="x86_64"
+            ENABLE_LZMA="ON"
+          fi
+          
+          mkdir -p build && cd build
+          
+          # Configure libzip with minimal features and link to our custom zlib
+          # For x86_64, enable LZMA support since we built liblzma
+          cmake .. \
+            -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/lib/darwin/${{ matrix.architecture }} \
+            -DCMAKE_PREFIX_PATH=${{ github.workspace }}/lib/darwin/${{ matrix.architecture }} \
+            -DCMAKE_OSX_ARCHITECTURES=$CMAKE_OSX_ARCHITECTURES \
+            -DENABLE_LZMA=$ENABLE_LZMA \
+            -DENABLE_BZIP2=OFF \
+            -DENABLE_ZSTD=OFF \
+            -DENABLE_OPENSSL=OFF \
+            -DENABLE_COMMONCRYPTO=OFF \
+            -DENABLE_GNUTLS=OFF \
+            -DENABLE_MBEDTLS=OFF \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DBUILD_DOC=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_TOOLS=OFF \
+            -DBUILD_REGRESS=OFF \
+            -DBUILD_OSSFUZZ=OFF
+            
+          make -j$(sysctl -n hw.ncpu)
+          make install
+
+      - name: Set up environment
+        run: |
+          echo "PKG_CONFIG_PATH=${{ github.workspace }}/lib/darwin/${{ matrix.architecture }}/lib/pkgconfig" >> $GITHUB_ENV
+          echo "LIBRARY_PATH=${{ github.workspace }}/lib/darwin/${{ matrix.architecture }}/lib" >> $GITHUB_ENV
+          echo "C_INCLUDE_PATH=${{ github.workspace }}/lib/darwin/${{ matrix.architecture }}/include" >> $GITHUB_ENV
+          echo "CPLUS_INCLUDE_PATH=${{ github.workspace }}/lib/darwin/${{ matrix.architecture }}/include" >> $GITHUB_ENV
+          echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
+
+      - name: Create .cargo config
+        run: |
+          mkdir -p .cargo
+          echo '[target.${{ env.TARGET }}]' > .cargo/config.toml
+          echo 'rustflags = ["-L", "${{ github.workspace }}/lib/darwin/${{ matrix.architecture }}/lib"]' >> .cargo/config.toml
+          cat .cargo/config.toml
+
+      - name: Build for ${{ matrix.architecture }}
+        run: |
+          # Verify libraries are built for the correct architecture
+          echo "Verifying library architecture:"
+          file ${{ github.workspace }}/lib/darwin/${{ matrix.architecture }}/lib/libz.a
+          file ${{ github.workspace }}/lib/darwin/${{ matrix.architecture }}/lib/libzip.a
+          if [ "${{ matrix.architecture }}" = "x86_64" ]; then
+            file ${{ github.workspace }}/lib/darwin/${{ matrix.architecture }}/lib/liblzma.a
+          fi
+          
+          # Build with appropriate flags
+          if [ "${{ matrix.architecture }}" = "arm64" ]; then
+            TARGET="aarch64-apple-darwin"
+            export RUSTFLAGS="-C target-feature=+crt-static -C link-arg=-arch -C link-arg=arm64"
+          else
+            TARGET="x86_64-apple-darwin"
+            export RUSTFLAGS="-C target-feature=+crt-static -C link-arg=-arch -C link-arg=x86_64" 
+          fi
+          
+          echo "Building for $TARGET with flags: $RUSTFLAGS"
+          echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
+          echo "LIBRARY_PATH=$LIBRARY_PATH"
+          echo "PKG_CONFIG_ALLOW_CROSS=$PKG_CONFIG_ALLOW_CROSS"
+          
+          cargo build --release --target $TARGET
+
+      - name: Create artifacts directory
+        run: mkdir -p artifacts
+
+      - name: Copy binaries
+        run: |
+          # Determine correct target directory based on architecture
+          if [ "${{ matrix.architecture }}" = "arm64" ]; then
+            TARGET_DIR="aarch64-apple-darwin"
+          else
+            TARGET_DIR="x86_64-apple-darwin"
+          fi
+          
+          # Find and copy binary
+          echo "Looking for binary in target/$TARGET_DIR/release/"
+          ls -la target/$TARGET_DIR/release/ || echo "Release directory not found"
+          
+          cp target/$TARGET_DIR/release/payload_dumper ./artifacts/payload_dumper-${{ matrix.architecture }} || echo "Binary not found"
+          
+          # Make it executable and verify architecture
+          if [ -f ./artifacts/payload_dumper-${{ matrix.architecture }} ]; then
+            chmod +x ./artifacts/payload_dumper-${{ matrix.architecture }}
+            echo "Binary architecture:"
+            file ./artifacts/payload_dumper-${{ matrix.architecture }}
+          else
+            echo "Failed to find binary"
+            find target -type f -executable | grep -v '\.so' | sort
+          fi
+
+      - name: Upload Binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: payload_dumper-${{ matrix.architecture }}-darwin
+          path: artifacts/payload_dumper-${{ matrix.architecture }}
+          if-no-files-found: warn
+
+  create-universal-binary:
+    needs: build
+    runs-on: macos-14
+    steps:
+      - name: Download x86_64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: payload_dumper-x86_64-darwin
+          path: binaries
+
+      - name: Download arm64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: payload_dumper-arm64-darwin
+          path: binaries
+
+      - name: Check binaries
+        run: |
+          ls -la binaries/
+          file binaries/payload_dumper-x86_64 || echo "x86_64 binary not found or not executable"
+          file binaries/payload_dumper-arm64 || echo "arm64 binary not found or not executable"
+
+      - name: Create universal binary
+        run: |
+          mkdir -p universal
+          lipo -create -output universal/payload_dumper binaries/payload_dumper-x86_64 binaries/payload_dumper-arm64
+          chmod +x universal/payload_dumper
+          file universal/payload_dumper
+
+      - name: Upload Universal Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: payload_dumper-universal-darwin
+          path: universal/payload_dumper
+          if-no-files-found: error
