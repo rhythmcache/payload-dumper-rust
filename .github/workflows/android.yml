@@ -3,7 +3,6 @@ name: Android Build
 on:
   workflow_dispatch:
 
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -34,10 +33,10 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install protoc
+      - name: Install protoc and build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
+          sudo apt-get install -y protobuf-compiler cmake build-essential autoconf automake libtool
           protoc --version
 
       - name: Set up Rust
@@ -63,8 +62,15 @@ jobs:
         
           echo "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
-          echo "PKG_CONFIG_PATH=${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}" >> $GITHUB_ENV
+          # Create library directory structure
+          mkdir -p ${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}
+          mkdir -p ${{ github.workspace }}/include
+          
+          echo "PKG_CONFIG_PATH=${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}/pkgconfig" >> $GITHUB_ENV
           echo "LIBRARY_PATH=${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I${{ github.workspace }}/include" >> $GITHUB_ENV
+          echo "LDFLAGS=-L${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}" >> $GITHUB_ENV
 
           ARCH_UPPER=$(echo "${{ matrix.arch }}" | tr '[:lower:]' '[:upper:]')
           echo "CARGO_TARGET_${ARCH_UPPER}_LINUX_ANDROID_LINKER=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.clang_target }}" >> $GITHUB_ENV
@@ -81,9 +87,6 @@ jobs:
             sudo ln -sf $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.clang_target }} $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7-linux-androideabi-clang
           fi
 
-          mkdir -p ${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}
-          ls -la ${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}/*.a || echo "No .a files found"
-
           # Create .cargo/config.toml
           mkdir -p .cargo
           cat > .cargo/config.toml << EOF
@@ -94,9 +97,134 @@ jobs:
             "-L", "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/${{ matrix.target }}",
             "-L", "${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}",
             "-l", "log",
-            "-l", "android"
+            "-l", "android",
+            "-l", "z",
+            "-l", "lzma",
+            "-l", "zip"
           ]
           EOF
+
+      - name: Build zlib (libz.a)
+        run: |
+          # Define common environment variables for cross-compilation
+          export CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.clang_target }}"
+          export AR="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
+          export RANLIB="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib"
+          export STRIP="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+          export CFLAGS="-O3 -fPIC"
+          export PREFIX="${{ github.workspace }}"
+          export LIBDIR="${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}"
+          
+          # Download and extract zlib
+          wget https://zlib.net/zlib-1.3.1.tar.gz
+          tar -xzf zlib-1.3.1.tar.gz
+          cd zlib-1.3.1
+          
+          # Configure and build zlib
+          ./configure --prefix=$PREFIX --libdir=$LIBDIR --static
+          make -j$(nproc)
+          make install
+          
+          # Create pkg-config file
+          mkdir -p $LIBDIR/pkgconfig
+          cat > $LIBDIR/pkgconfig/zlib.pc << EOF
+          prefix=$PREFIX
+          exec_prefix=\${prefix}
+          libdir=$LIBDIR
+          includedir=\${prefix}/include
+          
+          Name: zlib
+          Description: zlib compression library
+          Version: 1.3.1
+          
+          Requires:
+          Libs: -L\${libdir} -lz
+          Cflags: -I\${includedir}
+          EOF
+          
+          # Verify the library was built
+          ls -la $LIBDIR/libz.a
+
+      - name: Build liblzma.a
+        run: |
+          # Define common environment variables for cross-compilation
+          export CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.clang_target }}"
+          export AR="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
+          export RANLIB="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib"
+          export STRIP="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+          export CFLAGS="-O3 -fPIC"
+          export PREFIX="${{ github.workspace }}"
+          export LIBDIR="${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}"
+          
+          # Download and extract xz
+          wget https://github.com/tukaani-project/xz/releases/download/v5.8.1/xz-5.8.1.tar.gz
+          tar -xzf xz-5.8.1.tar.gz
+          cd xz-5.8.1
+          
+          # Configure and build xz
+          ./configure --host=${{ matrix.target }} --prefix=$PREFIX --libdir=$LIBDIR --disable-shared --enable-static --disable-xz --disable-xzdec --disable-lzmadec --disable-lzmainfo --disable-scripts --disable-doc
+          make -j$(nproc)
+          make install
+          
+          # Verify the library was built
+          ls -la $LIBDIR/liblzma.a
+
+      - name: Build libzip.a
+        run: |
+          # Define common environment variables for cross-compilation
+          export CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.clang_target }}"
+          export AR="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
+          export RANLIB="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib"
+          export STRIP="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+          export CFLAGS="-O3 -fPIC -I${{ github.workspace }}/include"
+          export LDFLAGS="-L${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}"
+          export PKG_CONFIG_PATH="${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}/pkgconfig"
+          export PREFIX="${{ github.workspace }}"
+          export LIBDIR="${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}"
+          
+          # Download and extract libzip
+          wget https://libzip.org/download/libzip-1.11.3.tar.xz
+          tar -xf libzip-1.11.3.tar.xz
+          cd libzip-1.11.3
+          mkdir build && cd build
+          
+          # Configure and build libzip with minimal features
+          cmake .. \
+            -DCMAKE_SYSTEM_NAME=Android \
+            -DCMAKE_SYSTEM_VERSION=21 \
+            -DCMAKE_ANDROID_ARCH_ABI=${{ matrix.android_abi }} \
+            -DCMAKE_ANDROID_NDK=$ANDROID_NDK_HOME \
+            -DCMAKE_INSTALL_PREFIX=$PREFIX \
+            -DCMAKE_INSTALL_LIBDIR=lib/android/${{ matrix.lib_dir }} \
+            -DCMAKE_C_COMPILER=$CC \
+            -DCMAKE_AR=$AR \
+            -DCMAKE_RANLIB=$RANLIB \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DENABLE_COMMONCRYPTO=OFF \
+            -DENABLE_GNUTLS=OFF \
+            -DENABLE_MBEDTLS=OFF \
+            -DENABLE_OPENSSL=OFF \
+            -DENABLE_WINDOWS_CRYPTO=OFF \
+            -DENABLE_BZIP2=OFF \
+            -DENABLE_ZSTD=OFF \
+            -DBUILD_TOOLS=OFF \
+            -DBUILD_REGRESS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_DOC=OFF
+          
+          make -j$(nproc)
+          make install
+          
+          # Verify the library was built
+          ls -la $LIBDIR/libzip.a
+
+      - name: List compiled libraries
+        run: |
+          echo "Library directory contents:"
+          ls -la ${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}
+          echo "pkgconfig directory contents:"
+          ls -la ${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}/pkgconfig || echo "No pkgconfig directory found"
 
       - name: Build for Android ${{ matrix.arch }}
         run: |
@@ -105,12 +233,20 @@ jobs:
             -L $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/${{ matrix.target }} \
             -L ${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}"
           
+          # Make libraries discoverable to pkg-config and the Rust linker
+          export PKG_CONFIG_PATH="${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}/pkgconfig"
+          export PKG_CONFIG_ALLOW_CROSS=1
+          export CFLAGS_${{ matrix.arch }}_linux_android="-O3 -target ${{ matrix.target }}21"
+          
+          if [ "${{ matrix.arch }}" = "x86" ]; then
+            export CFLAGS_i686_linux_android="-O3 -target i686-linux-android21"
+          fi
+          
+          if [ "${{ matrix.arch }}" = "armv7" ]; then
+            export CFLAGS_arm_linux_androideabi="-O3 -target armv7a-linux-androideabi21"
+          fi
+          
           cargo build --release --target ${{ matrix.target }}
-        env:
-          PKG_CONFIG_ALLOW_CROSS: 1
-          CFLAGS_${{ matrix.arch }}_linux_android: "-O3 -target ${{ matrix.target }}21"
-          CFLAGS_i686_linux_android: "-O3 -target i686-linux-android21"
-          CFLAGS_arm_linux_androideabi: "-O3 -target armv7a-linux-androideabi21"
 
       - name: Verify binary
         run: |
