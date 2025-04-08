@@ -2,14 +2,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut config = prost_build::Config::new();
     config.type_attribute(".", "#[derive(serde::Serialize)]");
     config.compile_protos(&["proto/update_metadata.proto"], &["proto/"])?;
-
-    // Check target environment
     let target = std::env::var("TARGET").unwrap_or_default();
     let is_android = target.contains("android");
     let is_musl = target.contains("musl");
     let is_windows = target.contains("windows");
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-
     if is_android {
         if target.contains("aarch64") {
             println!("cargo:rustc-link-search=native={}/lib/android/arm64-v8a", manifest_dir);
@@ -26,10 +23,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             println!("cargo:warning=Building for unknown Android architecture: {}", target);
         }
-
         println!("cargo:warning=Target architecture: {}", target);
         println!("cargo:rustc-link-arg=-fuse-ld=lld");
-
     } else if is_musl {
         if target.contains("x86_64") {
             println!("cargo:rustc-link-search=native={}/lib/musl/x86_64", manifest_dir);
@@ -57,15 +52,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else if target.contains("i686") || target.contains("x86") {
             println!("cargo:rustc-link-search=native={}/lib/win/x86", manifest_dir);
             println!("cargo:warning=Building for Windows x86 architecture");
-        } else {
-            println!("cargo:warning=Building for unknown Windows architecture: {}", target);
+        } else if target.contains("aarch64") {
+            println!("cargo:rustc-link-search=native={}/lib/win/aarch64", manifest_dir);
+            println!("cargo:warning=Building for Windows ARM64 architecture");
         }
     }
-
-    // Explicitly link the static libraries
     println!("cargo:rustc-link-lib=static=lzma");
     println!("cargo:rustc-link-lib=static=zip");
     println!("cargo:rustc-link-lib=static=z");
-
     Ok(())
 }
