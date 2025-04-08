@@ -253,17 +253,70 @@ jobs:
           file target/${{ matrix.target }}/release/payload_dumper
           ls -lh target/${{ matrix.target }}/release/payload_dumper
 
-      - name: Create artifact directory
-        run: mkdir -p artifacts/${{ matrix.android_abi }}
-
-      - name: Copy binaries
-        run: |
-          cp target/${{ matrix.target }}/release/payload_dumper ./artifacts/${{ matrix.android_abi }}/
-          chmod +x ./artifacts/${{ matrix.android_abi }}/payload_dumper
-
-      - name: Upload Binaries
+      - name: Upload binary as individual artifact
         uses: actions/upload-artifact@v4
         with:
-          name: payload_dumper-android-${{ matrix.android_abi }}
-          path: artifacts/${{ matrix.android_abi }}/payload_dumper
+          name: payload_dumper-${{ matrix.android_abi }}
+          path: target/${{ matrix.target }}/release/payload_dumper
+          if-no-files-found: error
+
+  pack-module:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Get commit hash
+        id: get_commit
+        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+      
+      - name: Create module
+        run: |
+          
+          mkdir -p module/uncommon
+      
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: binaries
+          
+      - name: Prepare Magisk module
+        run: |
+          
+          cp binaries/payload_dumper-arm64-v8a/payload_dumper module/uncommon/payload_dumper-arm64-v8a
+          cp binaries/payload_dumper-armeabi-v7a/payload_dumper module/uncommon/payload_dumper-armeabi-v7a
+          cp binaries/payload_dumper-x86/payload_dumper module/uncommon/payload_dumper-x86
+          cp binaries/payload_dumper-x86_64/payload_dumper module/uncommon/payload_dumper-x86_64
+          
+          # Set executable permissions
+          chmod +x module/uncommon/payload_dumper-*
+          
+          
+          if [ -f module/module.prop ]; then
+            # Update version with gh-actions-{commit}
+            sed -i "s/^version=.*/version=gh-actions-${{ steps.get_commit.outputs.SHORT_SHA }}/" module/module.prop
+            
+            
+            sed -i '/^updateJson=/d' module/module.prop
+          else
+            echo "Error: module.prop not found in module directory!"
+            exit 1
+          fi
+          
+          
+          echo "MODULE_VERSION=gh-actions-${{ steps.get_commit.outputs.SHORT_SHA }}" >> $GITHUB_ENV
+          
+          # List the contents of the module directory for verification
+          ls -la module/
+          ls -la module/uncommon/
+          
+          
+          echo "Contents of module.prop:"
+          cat module/module.prop
+
+      - name: Upload Magisk module
+        uses: actions/upload-artifact@v4
+        with:
+          name: payload-dumper-module-${{ env.MODULE_VERSION }}
+          path: module/
           if-no-files-found: error
