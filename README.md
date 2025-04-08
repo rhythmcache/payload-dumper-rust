@@ -111,7 +111,7 @@ Arguments:
   --list  
       List available partitions
   --metadata
-      Save complete metadata as json ( use -o - to write ti stdcout )
+      Save complete metadata as json ( use -o - to write to stdcout )
   --no-verify
       Skip Hash Verification    
   --no-parallel
