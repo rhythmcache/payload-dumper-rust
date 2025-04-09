@@ -619,6 +619,11 @@ impl HttpReader {
                         .and_then(|v| v.parse::<u64>().ok())
                         .ok_or_else(|| anyhow!("Could not determine content length"))?;
 
+                    // Check if server supports Accept-Ranges header
+                    if !response.headers().contains_key(header::ACCEPT_RANGES) {
+                        eprintln!("Warning: Server doesn't advertise Accept-Ranges. The process may fail.");
+                    }
+
                     return Ok(Self {
                         url,
                         position: 0,
