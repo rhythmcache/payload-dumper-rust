@@ -21,6 +21,7 @@ use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use url;
 use lazy_static::lazy_static;
@@ -45,6 +46,9 @@ lazy_static! {
             .build()
             .unwrap_or_else(|_| Client::new())
     };
+    
+    static ref ACCEPT_RANGES_WARNING_SHOWN: AtomicBool = AtomicBool::new(false);
+    static ref FILE_SIZE_INFO_SHOWN: AtomicBool = AtomicBool::new(false);
 }
 
 
@@ -621,9 +625,10 @@ impl HttpReader {
 
                     // Check if server supports Accept-Ranges header
                     if !response.headers().contains_key(header::ACCEPT_RANGES) {
-                        eprintln!("Warning: Server doesn't advertise Accept-Ranges. The process may fail.");
+                        if !ACCEPT_RANGES_WARNING_SHOWN.swap(true, Ordering::SeqCst) {
+                            eprintln!("- Warning: Server doesn't advertise Accept-Ranges. The process may fail.");
+                        }
                     }
-
                     return Ok(Self {
                         url,
                         position: 0,
@@ -2060,7 +2065,7 @@ fn main() -> Result<()> {
             if let Ok(reader) = &http_reader {
                 let file_size = reader.content_length;
                 main_pb.set_message("Connection established");
-                if file_size > 1024 * 1024 {
+                if file_size > 1024 * 1024 && !FILE_SIZE_INFO_SHOWN.swap(true, Ordering::SeqCst) {
                     println!("- Remote file size: {}", format_size(file_size));
                 }
                 reader.content_type.clone()
@@ -2075,7 +2080,7 @@ fn main() -> Result<()> {
             let reader = RemoteZipReader::new(url)?;
             let file_size = reader.http_reader.content_length;
             main_pb.set_message("Connection established");
-            if file_size > 1024 * 1024 {
+            if file_size > 1024 * 1024 && !FILE_SIZE_INFO_SHOWN.swap(true, Ordering::SeqCst) {
                 println!("- Remote ZIP size: {}", format_size(file_size));
             }
             Box::new(reader) as Box<dyn ReadSeek>
@@ -2083,7 +2088,7 @@ fn main() -> Result<()> {
             let reader = HttpReader::new(url)?;
             let file_size = reader.content_length;
             main_pb.set_message("Connection established");
-            if file_size > 1024 * 1024 {
+            if file_size > 1024 * 1024 && !FILE_SIZE_INFO_SHOWN.swap(true, Ordering::SeqCst) {
                 println!("- Remote file size: {}", format_size(file_size));
             }
             Box::new(reader) as Box<dyn ReadSeek>
