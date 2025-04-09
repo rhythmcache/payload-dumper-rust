@@ -79,7 +79,6 @@ unsafe extern "C" {
     pub fn zip_fopen(archive: *mut c_void, name: *const c_char, flags: c_int) -> *mut c_void;
 }
 
-
 #[repr(C)]
 pub struct zip_stat_t {
     pub valid: c_uint,
@@ -98,14 +97,13 @@ impl Default for zip_stat_t {
     }
 }
 
-
-
 #[derive(Serialize)]
 struct PartitionMetadata {
     partition_name: String,
     size_in_blocks: u64,
     size_in_bytes: u64,
     size_readable: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     hash: Option<String>,
     start_offset: u64,
     end_offset: u64,
@@ -116,53 +114,76 @@ struct PartitionMetadata {
     encryption: String,
     block_size: u64,
     total_blocks: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     run_postinstall: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     postinstall_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     filesystem_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     postinstall_optional: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     hash_tree_algorithm: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     version: Option<String>,
 }
 
 #[derive(Serialize)]
 struct DynamicPartitionGroupInfo {
     name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     size: Option<u64>,
     partition_names: Vec<String>,
 }
 
 #[derive(Serialize)]
 struct VabcFeatureSetInfo {
+    #[serde(skip_serializing_if = "Option::is_none")]
     threaded: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     batch_writes: Option<bool>,
 }
 
 #[derive(Serialize)]
 struct DynamicPartitionInfo {
     groups: Vec<DynamicPartitionGroupInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     snapshot_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     vabc_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     vabc_compression_param: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     cow_version: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     vabc_feature_set: Option<VabcFeatureSetInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     compression_factor: Option<u64>,
 }
 
 #[derive(Serialize)]
 struct ApexInfoMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
     package_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     version: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     is_compressed: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     decompressed_size: Option<i64>,
 }
 
 #[derive(Serialize)]
 struct PayloadMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
     security_patch_level: Option<String>,
     block_size: u32,
     minor_version: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
     max_timestamp: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     dynamic_partition_metadata: Option<DynamicPartitionInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     partial_update: Option<bool>,
     apex_info: Vec<ApexInfoMetadata>,
     partitions: Vec<PartitionMetadata>,
