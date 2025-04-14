@@ -239,7 +239,7 @@ struct Args {
 
     #[arg(
         long,
-        help = "Save Complete Metadata as JSON",
+        help = "Save Complete Metadata as JSON ( use --out - to write to stdout)",
         conflicts_with_all = &["diff", "old", "images"]
     )]
     metadata: bool,
