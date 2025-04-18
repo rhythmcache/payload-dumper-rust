@@ -119,8 +119,8 @@ Arguments:
 ```
 ---
 #### Dependencies :
-- See [Cargo.toml](./Cargo.toml)
-- - [update_metadata.proto](https://android.googlesource.com/platform/system/update_engine/+/HEAD/update_metadata.proto)
+- [Cargo.toml](./Cargo.toml)
+- [update_metadata.proto](https://android.googlesource.com/platform/system/update_engine/+/HEAD/update_metadata.proto)
 
 ---
 
