@@ -43,6 +43,7 @@ lazy_static! {
             .tcp_keepalive(Some(Duration::from_secs(30)))
             .pool_max_idle_per_host(10)
             .default_headers(headers)
+            .redirect(reqwest::redirect::Policy::limited(10))
             .build()
             .unwrap_or_else(|_| Client::new())
     };
