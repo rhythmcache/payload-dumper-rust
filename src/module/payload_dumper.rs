@@ -1,20 +1,20 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use bzip2::read::BzDecoder;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use lzma::LzmaReader;
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::InstallOperation;
+pub use crate::PartitionUpdate;
 use crate::ReadSeek;
+use crate::install_operation;
 use crate::module::patch::bspatch;
 use crate::module::structs::Args;
 use crate::module::utils::verify_hash;
-use crate::InstallOperation;
-use crate::install_operation;
-pub use crate::PartitionUpdate;
 
 pub fn process_operation(
     operation_index: usize,
@@ -295,12 +295,11 @@ pub fn dump_partition(
     Ok(())
 }
 
-
 pub fn create_payload_reader(path: &PathBuf) -> Result<Box<dyn ReadSeek>> {
     let file = File::open(path)?;
-    
+
     let file_size = file.metadata()?.len();
-    
+
     if file_size > 10 * 1024 * 1024 {
         match unsafe { memmap2::Mmap::map(&file) } {
             Ok(mmap) => {
@@ -308,24 +307,24 @@ pub fn create_payload_reader(path: &PathBuf) -> Result<Box<dyn ReadSeek>> {
                     mmap: memmap2::Mmap,
                     position: u64,
                 }
-                
+
                 impl Read for MmapReader {
                     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
                         let start = self.position as usize;
                         if start >= self.mmap.len() {
                             return Ok(0); // EOF
                         }
-                        
+
                         let end = std::cmp::min(start + buf.len(), self.mmap.len());
                         let bytes_to_read = end - start;
-                        
+
                         buf[..bytes_to_read].copy_from_slice(&self.mmap[start..end]);
                         self.position += bytes_to_read as u64;
-                        
+
                         Ok(bytes_to_read)
                     }
                 }
-                
+
                 impl Seek for MmapReader {
                     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
                         let new_pos = match pos {
@@ -346,27 +345,22 @@ pub fn create_payload_reader(path: &PathBuf) -> Result<Box<dyn ReadSeek>> {
                                 }
                             }
                         };
-                        
+
                         if new_pos > self.mmap.len() as u64 {
                             return Err(io::Error::new(
                                 io::ErrorKind::InvalidInput,
                                 "Attempted to seek past end of file",
                             ));
                         }
-                        
+
                         self.position = new_pos;
                         Ok(self.position)
                     }
                 }
-                
-                return Ok(Box::new(MmapReader { 
-                    mmap,
-                    position: 0,
-                }) as Box<dyn ReadSeek>);
-            },
-            Err(_) => {
-                Ok(Box::new(file) as Box<dyn ReadSeek>)
+
+                return Ok(Box::new(MmapReader { mmap, position: 0 }) as Box<dyn ReadSeek>);
             }
+            Err(_) => Ok(Box::new(file) as Box<dyn ReadSeek>),
         }
     } else {
         Ok(Box::new(file) as Box<dyn ReadSeek>)

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use byteorder::{BigEndian, ReadBytesExt};
 use digest::Digest;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
@@ -11,12 +11,14 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crate::ReadSeek;
 use crate::DeltaArchiveManifest;
-use crate::install_operation;
-use crate::module::structs::{Args, PartitionMetadata, DynamicPartitionGroupInfo, VabcFeatureSetInfo, DynamicPartitionInfo, ApexInfoMetadata, PayloadMetadata};
 use crate::PartitionUpdate;
-
+use crate::ReadSeek;
+use crate::install_operation;
+use crate::module::structs::{
+    ApexInfoMetadata, Args, DynamicPartitionGroupInfo, DynamicPartitionInfo, PartitionMetadata,
+    PayloadMetadata, VabcFeatureSetInfo,
+};
 
 pub fn get_zip_error_message(error_code: i32) -> &'static str {
     match error_code {
@@ -83,8 +85,11 @@ pub fn verify_partitions_hash(
             .unwrap(),
     );
     verification_pb.enable_steady_tick(Duration::from_millis(100));
-    verification_pb.set_message(format!("Verifying hashes for {} partitions", partitions.len()));
-    
+    verification_pb.set_message(format!(
+        "Verifying hashes for {} partitions",
+        partitions.len()
+    ));
+
     let out_dir = &args.out;
     let mut failed_verifications = Vec::new();
     let progress_bars: Vec<_> = partitions
@@ -101,29 +106,29 @@ pub fn verify_partitions_hash(
             (partition.partition_name.clone(), pb)
         })
         .collect();
-    
+
     let results: Vec<_> = partitions
         .par_iter()
         .map(|partition| {
             let partition_name = &partition.partition_name;
             let out_path = out_dir.join(format!("{}.img", partition_name));
-            
+
             let expected_hash = partition
                 .new_partition_info
                 .as_ref()
                 .and_then(|info| info.hash.as_ref());
-            
+
             let pb = progress_bars
                 .iter()
                 .find(|(name, _)| name == partition_name)
                 .map(|(_, pb)| pb.clone());
-            
+
             if let Some(pb) = &pb {
                 pb.set_message(format!("Verifying {}", partition_name));
             }
-            
+
             let result = verify_partition_hash(partition_name, &out_path, expected_hash, pb);
-            
+
             match result {
                 Ok(true) => Ok(partition_name.clone()),
                 Ok(false) => Err(partition_name.clone()),
@@ -134,13 +139,13 @@ pub fn verify_partitions_hash(
             }
         })
         .collect();
-    
+
     for result in results {
         if let Err(partition_name) = result {
             failed_verifications.push(partition_name);
         }
     }
-    
+
     if failed_verifications.is_empty() {
         verification_pb.finish_with_message("All hashes verified successfully");
     } else {
@@ -149,7 +154,7 @@ pub fn verify_partitions_hash(
             failed_verifications.len()
         ));
     }
-    
+
     Ok(failed_verifications)
 }
 
@@ -169,28 +174,27 @@ pub fn verify_partition_hash(
 
         let file = File::open(out_path)
             .with_context(|| format!("Failed to open {} for hash verification", partition_name))?;
-        
-        let file_size = file.metadata()
-            .map(|m| m.len())
-            .unwrap_or(0);
-        
+
+        let file_size = file.metadata().map(|m| m.len()).unwrap_or(0);
+
         if let Some(pb) = &progress_bar {
-            pb.set_message(format!("Verifying {} ({})", 
-                partition_name, 
-                format_size(file_size)));
+            pb.set_message(format!(
+                "Verifying {} ({})",
+                partition_name,
+                format_size(file_size)
+            ));
         }
-        
+
         let mut hasher = Sha256::new();
-        
+
         if file_size > 10 * 1024 * 1024 {
             match unsafe { memmap2::Mmap::map(&file) } {
                 Ok(mmap) => {
-
                     hasher.update(&mmap[..]);
-                    
+
                     let hash = hasher.finalize();
                     let matches = hash.as_slice() == expected.as_slice();
-                    
+
                     if let Some(pb) = progress_bar {
                         if matches {
                             pb.finish_with_message(format!("✓ {} verified", partition_name));
@@ -198,15 +202,15 @@ pub fn verify_partition_hash(
                             pb.finish_with_message(format!("✕ {} mismatch", partition_name));
                         }
                     }
-                    
+
                     return Ok(matches);
-                },
+                }
                 Err(_) => {
-                    // Fall back 
+                    // Fall back
                 }
             }
         }
-        
+
         let buffer_size = if file_size < 1024 * 1024 {
             64 * 1024
         } else if file_size < 100 * 1024 * 1024 {
@@ -214,22 +218,22 @@ pub fn verify_partition_hash(
         } else {
             8 * 1024 * 1024
         };
-        
+
         let mut file = std::io::BufReader::new(file);
         let mut buffer = vec![0u8; buffer_size];
-        
+
         loop {
             let bytes_read = file.read(&mut buffer)?;
             if bytes_read == 0 {
                 break;
             }
-            
+
             hasher.update(&buffer[..bytes_read]);
         }
-        
+
         let hash = hasher.finalize();
         let matches = hash.as_slice() == expected.as_slice();
-        
+
         if let Some(pb) = progress_bar {
             if matches {
                 pb.finish_with_message(format!("✓ {} verified", partition_name));
@@ -237,7 +241,7 @@ pub fn verify_partition_hash(
                 pb.finish_with_message(format!("✕ {} mismatch", partition_name));
             }
         }
-        
+
         Ok(matches)
     } else {
         if let Some(pb) = progress_bar {
@@ -263,8 +267,7 @@ pub fn format_elapsed_time(duration: Duration) -> String {
     }
 }
 
-pub 
-fn save_metadata(
+pub fn save_metadata(
     manifest: &DeltaArchiveManifest,
     output_dir: &PathBuf,
     data_offset: u64,
@@ -380,11 +383,11 @@ fn save_metadata(
     };
 
     let json = serde_json::to_string_pretty(&payload_metadata)?;
-    
+
     if output_dir.to_string_lossy() == "-" {
         return Ok(json);
     }
-    
+
     let metadata_path = output_dir.join("payload_metadata.json");
     fs::write(metadata_path, &json)?;
 
@@ -467,6 +470,3 @@ pub fn list_partitions(payload_reader: &mut Box<dyn ReadSeek>) -> Result<()> {
     }
     Ok(())
 }
-
-
-

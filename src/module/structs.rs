@@ -5,11 +5,9 @@ use std::path::PathBuf;
 // use memmap2::Mmap;
 // use reqwest::blocking::Client;
 
-
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 #[command(next_line_help = true)]
-
 
 pub struct Args {
     pub payload_path: PathBuf,
@@ -56,20 +54,12 @@ pub struct Args {
     )]
     pub metadata: bool,
 
-
-    #[arg(
-        long,
-        help = "Disable parallel extraction"
-    )]
+    #[arg(long, help = "Disable parallel extraction")]
     pub no_parallel: bool,
 
-    #[arg(
-        long,
-        help = "Skip hash verification"
-    )]
+    #[arg(long, help = "Skip hash verification")]
     pub no_verify: bool,
 }
-
 
 #[derive(Serialize)]
 pub struct PartitionMetadata {

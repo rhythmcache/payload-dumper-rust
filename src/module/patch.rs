@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use byteorder::{BigEndian, ReadBytesExt};
 use bzip2::read::BzDecoder;
 use std::io::{Cursor, Read};
@@ -116,7 +116,9 @@ pub fn bsdf2_read_patch<R: Read>(reader: &mut R) -> Result<(i64, Vec<(i64, i64, 
     };
     Ok((len_dst, control, diff_data))
 }
-pub fn bspatch(old_data: &[u8], patch_data: &[u8]) -> Result<Vec<u8>> {    let mut reader = Cursor::new(patch_data);    let (len_dst, control, diff_data) = bsdf2_read_patch(&mut reader)?;
+pub fn bspatch(old_data: &[u8], patch_data: &[u8]) -> Result<Vec<u8>> {
+    let mut reader = Cursor::new(patch_data);
+    let (len_dst, control, diff_data) = bsdf2_read_patch(&mut reader)?;
 
     let mut new_data = vec![0u8; len_dst as usize];
     let mut old_pos = 0;

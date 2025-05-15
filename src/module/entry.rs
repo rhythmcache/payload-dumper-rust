@@ -1,7 +1,8 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use byteorder::{BigEndian, ReadBytesExt};
 use clap::Parser;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use lazy_static::lazy_static;
 use prost::Message;
 use rayon::prelude::*;
 use std::collections::HashSet;
@@ -10,17 +11,19 @@ use std::io::{Read, Seek, SeekFrom};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
-use lazy_static::lazy_static;
 
-use crate::ReadSeek;
-use crate::module::http::HttpReader;
-use crate::module::remote_zip::RemoteZipReader;
-use crate::module::zip::{LibZipReader, zip_close, zip_open};
-use crate::module::utils::{get_zip_error_message, save_metadata, format_size, list_partitions, verify_partitions_hash, format_elapsed_time};
-use crate::module::structs::Args;
 use crate::DeltaArchiveManifest;
 use crate::PartitionUpdate;
+use crate::ReadSeek;
+use crate::module::http::HttpReader;
 use crate::module::payload_dumper::{create_payload_reader, dump_partition};
+use crate::module::remote_zip::RemoteZipReader;
+use crate::module::structs::Args;
+use crate::module::utils::{
+    format_elapsed_time, format_size, get_zip_error_message, list_partitions, save_metadata,
+    verify_partitions_hash,
+};
+use crate::module::zip::{LibZipReader, zip_close, zip_open};
 
 lazy_static! {
     static ref FILE_SIZE_INFO_SHOWN: AtomicBool = AtomicBool::new(false);
@@ -36,7 +39,7 @@ pub fn run() -> Result<()> {
     } else {
         num_cpus::get()
     };
-    
+
     rayon::ThreadPoolBuilder::new()
         .num_threads(thread_count)
         .build_global()?;
@@ -52,17 +55,22 @@ pub fn run() -> Result<()> {
     );
     main_pb.enable_steady_tick(Duration::from_millis(100));
     let payload_path_str = args.payload_path.to_string_lossy().to_string();
-    let is_url = payload_path_str.starts_with("http://") || payload_path_str.starts_with("https://");
+    let is_url =
+        payload_path_str.starts_with("http://") || payload_path_str.starts_with("https://");
     main_pb.set_message("Opening file...");
-    
+
     if !is_url {
         if let Ok(metadata) = fs::metadata(&args.payload_path) {
             if metadata.len() > 1024 * 1024 {
-                println!("Processing file: {}, size: {}", payload_path_str, format_size(metadata.len()));
+                println!(
+                    "Processing file: {}, size: {}",
+                    payload_path_str,
+                    format_size(metadata.len())
+                );
             }
         }
     }
-    
+
     let mut payload_reader: Box<dyn ReadSeek> = if is_url {
         main_pb.set_message("Initializing remote connection...");
         let url = payload_path_str.clone();
@@ -102,30 +110,34 @@ pub fn run() -> Result<()> {
             Box::new(reader) as Box<dyn ReadSeek>
         }
     } else if args.payload_path.extension().and_then(|e| e.to_str()) == Some("zip") {
-        
-        let path_str = args.payload_path.to_str().ok_or_else(|| anyhow!("Invalid path"))?;
-        
+        let path_str = args
+            .payload_path
+            .to_str()
+            .ok_or_else(|| anyhow!("Invalid path"))?;
+
         let normalized_path = path_str.replace('\\', "/");
-        
+
         let c_path = match std::ffi::CString::new(normalized_path.clone()) {
             Ok(p) => p,
             Err(e) => {
                 return Err(anyhow!("Invalid path contains null bytes: {}", e));
             }
         };
-        
+
         let mut error = 0;
         let archive = unsafe { zip_open(c_path.as_ptr(), 0, &mut error) };
-        
+
         if archive.is_null() {
             let error_msg = get_zip_error_message(error);
-            return Err(anyhow!("Failed to open ZIP file: {} ({})", error_msg, error));
+            return Err(anyhow!(
+                "Failed to open ZIP file: {} ({})",
+                error_msg,
+                error
+            ));
         }
-        
+
         match { LibZipReader::new(archive, path_str.to_string()) } {
-            Ok(reader) => {
-                Box::new(reader) as Box<dyn ReadSeek>
-            },
+            Ok(reader) => Box::new(reader) as Box<dyn ReadSeek>,
             Err(e) => {
                 unsafe { zip_close(archive) };
                 return Err(e);
@@ -165,7 +177,7 @@ pub fn run() -> Result<()> {
     if args.metadata && !args.list {
         main_pb.set_message("Extracting metadata...");
         let is_stdout = args.out.to_string_lossy() == "-";
-        
+
         match save_metadata(&manifest, &args.out, data_offset) {
             Ok(json) => {
                 if is_stdout {
@@ -190,7 +202,7 @@ pub fn run() -> Result<()> {
         multi_progress.clear()?;
         if args.metadata {
             let is_stdout = args.out.to_string_lossy() == "-";
-            
+
             match save_metadata(&manifest, &args.out, data_offset) {
                 Ok(json) => {
                     if is_stdout {
@@ -208,7 +220,7 @@ pub fn run() -> Result<()> {
                 }
             }
         }
-        
+
         println!();
         payload_reader.seek(SeekFrom::Start(0))?;
         return list_partitions(&mut payload_reader);
@@ -234,7 +246,7 @@ pub fn run() -> Result<()> {
         "Found {} partitions to extract",
         partitions_to_extract.len()
     ));
-    
+
     let use_parallel = ((!is_url
         && (args.payload_path.extension().and_then(|e| e.to_str()) == Some("zip")
             || args.payload_path.extension().and_then(|e| e.to_str()) == Some("bin")))
@@ -247,63 +259,72 @@ pub fn run() -> Result<()> {
     });
     let multi_progress = Arc::new(multi_progress);
     let args = Arc::new(args);
-    
+
     let mut failed_partitions = Vec::new();
-    
+
     if use_parallel {
         let payload_path = Arc::new(args.payload_path.to_str().unwrap_or_default().to_string());
-        let payload_url = Arc::new(if is_url { 
+        let payload_url = Arc::new(if is_url {
             payload_path_str.clone()
-        } else { 
-            String::new() 
+        } else {
+            String::new()
         });
-        
+
         let max_retries = 3;
         let num_cpus = num_cpus::get();
         let chunk_size = std::cmp::max(1, partitions_to_extract.len() / num_cpus);
-        
+
         let active_readers = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let max_concurrent_readers = num_cpus;
-        
+
         let results: Vec<_> = partitions_to_extract
             .par_chunks(chunk_size)
             .flat_map(|chunk| {
                 chunk.par_iter().map(|partition| {
                     let active_readers = Arc::clone(&active_readers);
                     let partition_name = partition.partition_name.clone();
-                    
+
                     let result = (0..max_retries)
                         .find_map(|attempt| {
                             if attempt > 0 {
                                 let delay = 100 * (1 << attempt.min(4));
                                 std::thread::sleep(Duration::from_millis(delay));
                             }
-                            
-                            if !is_url && args.payload_path.extension().and_then(|e| e.to_str()) == Some("zip") {
-                                let current = active_readers.load(std::sync::atomic::Ordering::SeqCst);
+
+                            if !is_url
+                                && args.payload_path.extension().and_then(|e| e.to_str())
+                                    == Some("zip")
+                            {
+                                let current =
+                                    active_readers.load(std::sync::atomic::Ordering::SeqCst);
                                 if current >= max_concurrent_readers {
-                                    while active_readers.load(std::sync::atomic::Ordering::SeqCst) >= max_concurrent_readers {
+                                    while active_readers.load(std::sync::atomic::Ordering::SeqCst)
+                                        >= max_concurrent_readers
+                                    {
                                         std::thread::sleep(Duration::from_millis(10));
                                     }
                                 }
-                                
+
                                 active_readers.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                             }
-                            
+
                             let reader_result = if is_url {
                                 RemoteZipReader::new_for_parallel((*payload_url).clone())
                                     .map(|reader| Box::new(reader) as Box<dyn ReadSeek>)
-                            } else if args.payload_path.extension().and_then(|e| e.to_str()) == Some("zip") {
-                                let result = LibZipReader::new_for_parallel((*payload_path).clone())
-                                    .map(|reader| Box::new(reader) as Box<dyn ReadSeek>);
-                                
+                            } else if args.payload_path.extension().and_then(|e| e.to_str())
+                                == Some("zip")
+                            {
+                                let result =
+                                    LibZipReader::new_for_parallel((*payload_path).clone())
+                                        .map(|reader| Box::new(reader) as Box<dyn ReadSeek>);
+
                                 active_readers.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-                                
+
                                 result
                             } else {
                                 create_payload_reader(&args.payload_path)
                             };
-                            
+
                             let mut reader = match reader_result {
                                 Ok(reader) => reader,
                                 Err(e) => {
@@ -314,7 +335,7 @@ pub fn run() -> Result<()> {
                                     };
                                 }
                             };
-                            
+
                             match dump_partition(
                                 partition,
                                 data_offset,
@@ -334,10 +355,7 @@ pub fn run() -> Result<()> {
                             }
                         })
                         .unwrap_or_else(|| {
-                            Err((
-                                partition_name,
-                                anyhow!("All retry attempts failed"),
-                            ))
+                            Err((partition_name, anyhow!("All retry attempts failed")))
                         });
 
                     result
@@ -402,20 +420,23 @@ pub fn run() -> Result<()> {
             }
         }
     }
-    
+
     if !args.no_verify {
         main_pb.set_message("Verifying partition hashes...");
-        
+
         let partitions_to_verify: Vec<&PartitionUpdate> = partitions_to_extract
             .iter()
             .filter(|p| !failed_partitions.contains(&p.partition_name))
             .copied()
             .collect();
-        
+
         match verify_partitions_hash(&partitions_to_verify, &args, &multi_progress) {
             Ok(failed_verifications) => {
                 if !failed_verifications.is_empty() {
-                    eprintln!("Hash verification failed for {} partitions.", failed_verifications.len());
+                    eprintln!(
+                        "Hash verification failed for {} partitions.",
+                        failed_verifications.len()
+                    );
                 }
             }
             Err(e) => {
@@ -445,9 +466,11 @@ pub fn run() -> Result<()> {
         ));
         println!(
             "\nExtraction completed with {} failed partitions in {}. Output directory: {:?}",
-            failed_partitions.len(), elapsed_time, args.out
+            failed_partitions.len(),
+            elapsed_time,
+            args.out
         );
     }
-    
+
     Ok(())
 }
