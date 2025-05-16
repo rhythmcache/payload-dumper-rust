@@ -2,8 +2,14 @@
 name = "payload_dumper"
 version = "0.3.0"
 edition = "2024"
-description = "Rusted CLI Utility To Extarct Android OTA Payload"
+authors = ["rhythmcache"]
+description = "Rust-based CLI utility to extract Android OTA payload.bin"
 repository = "https://github.com/rhythmcache/payload-dumper-rust"
+readme = "README.md"
+license = "Apache-2.0"
+homepage = "https://github.com/rhythmcache/payload-dumper-rust"
+keywords = ["android", "dumper", "payload", "cli", "ota"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 anyhow = "*"
