@@ -34,6 +34,7 @@ If you have Rust and Cargo installed, you can install this tool with:
 
 ```bash
 cargo install payload_dumper
+```
 
 
 ---
