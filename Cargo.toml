@@ -8,50 +8,47 @@ repository = "https://github.com/rhythmcache/payload-dumper-rust"
 readme = "README.md"
 license = "Apache-2.0"
 homepage = "https://github.com/rhythmcache/payload-dumper-rust"
-keywords = ["dumper", "android", "ota" ,"extractor" ,"payload.bin"]
+keywords = ["dumper", "android", "ota", "extractor", "payload"]
 categories = ["command-line-utilities"]
 
 [dependencies]
-anyhow = "*"
-byteorder = "*"
-bzip2 = "*"
-clap = { version = "*", features = ["derive"] }
-digest = "*"
-indicatif = "*"
-rust-lzma = "*"
-prost = "*"
-sha2 = "*"
-reqwest = { version = "*", default-features = false, features = ["rustls-tls", "blocking", "gzip", "http2"] }
-webpki-roots = "*"
-tokio = { version = "*", features = ["rt", "rt-multi-thread", "io-util", "time"] }
-rayon = "*"
-memmap2 = "*"
-brotli = "*"
-zstd = "*"
-num_cpus = "*"
-rand = "*"
-hex = "*"
-serde = { version = "*", features = ["derive"] }
-serde_json = "*"
-url = "*"
-lazy_static = "*"
-once_cell = "*"
-reqwest-hickory-resolver = { version = "*", optional = true }
-
+anyhow = "1.0.79"
+byteorder = "1.5.0"
+bzip2 = "0.5.2"
+clap = { version = "4.5.38", features = ["derive"] }
+digest = "0.10"
+indicatif = "0.17.7"
+rust-lzma = "0.6.0"
+prost = "0.13.5"
+sha2 = "0.10.8"
+reqwest = { version = "0.12.15", default-features = false, features = ["rustls-tls", "blocking", "gzip", "http2"] }
+webpki-roots = "0.26.10"
+tokio = { version = "1.43.0", features = ["rt", "rt-multi-thread", "io-util", "time"] }
+rayon = "1.9.0"
+memmap2 = "0.9.5"
+brotli = "8.0.1"
+zstd = "0.13.0"
+num_cpus = "1.16.0"
+rand = "0.9.1"
+hex = "0.4.3"
+serde = { version = "1.0.197", features = ["derive"] }
+serde_json = "1.0.116"
+url = "2.5.0"
+lazy_static = "1.4.0"
+once_cell = "1.19.0"
+reqwest-hickory-resolver = { version = "0.2.0", optional = true }
 
 [features]
 default = []
 hickory-dns = ["reqwest-hickory-resolver"]
 
-
-
 [build-dependencies]
-prost-build = "*"
-cc = "*"
+prost-build = "0.13.5"
+cc = "1.0.83"
 
 [profile.release]
-strip = true         
-lto = true         
-opt-level = "z"    
-codegen-units = 1     
-panic = "abort"    
+strip = true
+lto = true
+opt-level = "z"
+codegen-units = 1
+panic = "abort"
