@@ -84,14 +84,14 @@ impl Clone for HttpReader {
 
 impl HttpReader {
     pub fn new(url: String) -> Result<Self> {
-        Self::new_internal(url, false)
+        Self::new_internal(url, true)
     }
 
     pub fn new_silent(url: String) -> Result<Self> {
         Self::new_internal(url, false)
     }
 
-    fn new_internal(url: String, _print_size: bool) -> Result<Self> {
+    fn new_internal(url: String, print_size: bool) -> Result<Self> {
         let client = HTTP_CLIENT.clone();
 
         let parsed_url = url::Url::parse(&url).map_err(|e| anyhow!("Invalid URL: {}", e))?;
@@ -135,6 +135,13 @@ impl HttpReader {
                             );
                         }
                     }
+                    
+                    // Print file size info if requested
+                    if print_size && !FILE_SIZE_INFO_SHOWN.swap(true, Ordering::SeqCst) {
+                        let size_mb = content_length as f64 / (1024.0 * 1024.0);
+                        eprintln!("- File size: {:.2} MB", size_mb);
+                    }
+                    
                     return Ok(Self {
                         url,
                         position: 0,
