@@ -28,7 +28,13 @@ Android OTA payload dumper written in Rust.
   ```
   bash <(curl -L "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/termux-install.sh")
   ```
-  
+# ## Install via Cargo
+
+If you have Rust and Cargo installed, you can install this tool with:
+
+```bash
+cargo install payload_dumper
+
 
 ---
 
@@ -45,16 +51,18 @@ Android OTA payload dumper written in Rust.
 ---
 
 ### Screenshots
+
 - **Direct Payload Extraction**:  
-  <img src="./photos/Screenshot_20250304-175923_Termux.png" width="75%">
+  ![Direct Payload Extraction](https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/photos/Screenshot_20250304-175923_Termux.png)
 
 - **ZIP File Extraction**:  
-  <img src="./photos/Screenshot_20250304-175502_Termux.png" width="75%">
+  ![ZIP File Extraction](https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/photos/Screenshot_20250304-175502_Termux.png)
 
 - **Remote URL Extraction**:  
-  <img src="./photos/Screenshot_20250304-180030_Termux.png" width="75%">
-  
+  ![Remote URL Extraction](https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/photos/Screenshot_20250304-180030_Termux.png)
+
 ---
+
 
 ### Usage :
 #### Basic Usage
