@@ -28,7 +28,7 @@ Android OTA payload dumper written in Rust.
   ```
   bash <(curl -L "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/termux-install.sh")
   ```
-# ## Install via Cargo
+### Install via Cargo
 
 If you have Rust and Cargo installed, you can install this tool with:
 
