@@ -132,12 +132,12 @@ To build this , you'll need:
 - You may also need to link against libzip, zlib, and liblzma.
 
 ---
-
+<!--
 - ***To Build On Termux , Simply Run***
 ```
 bash <(curl -L "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/termux-build.sh")
 ```
-
+-->
 
 ### Credits
 - This tool is inspired from [vm03/payload_dumper](https://github.com/vm03/payload_dumper)
