@@ -40,7 +40,9 @@ Note - Installation VIA Cargo might fail if you dont have `libzip`, `zlib` and `
 
 
   ---
-*Performance Metrics** 
+
+  
+## *Performance Metrics** 
 
 - Here are the performance metrics for **Payload Dumper Rust** running on a **Poco X4 Pro (SD695, 8GB RAM)** in Termux. The test file used is [comet-ota-ad1a.240530.030-98066022.zip](https://dl.google.com/dl/android/aosp/comet-ota-ad1a.240530.030-98066022.zip) (2.53GB).
 
