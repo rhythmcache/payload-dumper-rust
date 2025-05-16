@@ -28,6 +28,7 @@ Android OTA payload dumper written in Rust.
   ```
   bash <(curl -L "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/termux-install.sh")
   ```
+  ---
 ### Install via Cargo
 
 If you have Rust and Cargo installed, you can install this tool with:
@@ -35,11 +36,11 @@ If you have Rust and Cargo installed, you can install this tool with:
 ```bash
 cargo install payload_dumper
 ```
+Note - Installation VIA Cargo might fail if you dont have `libzip`, `zlib` and `liblzma` installed on your system
 
 
----
-
-## **Performance Metrics** 
+  ---
+*Performance Metrics** 
 
 - Here are the performance metrics for **Payload Dumper Rust** running on a **Poco X4 Pro (SD695, 8GB RAM)** in Termux. The test file used is [comet-ota-ad1a.240530.030-98066022.zip](https://dl.google.com/dl/android/aosp/comet-ota-ad1a.240530.030-98066022.zip) (2.53GB).
 
