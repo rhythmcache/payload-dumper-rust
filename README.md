@@ -36,7 +36,7 @@ If you have Rust and Cargo installed, you can install this tool with:
 ```bash
 cargo install payload_dumper
 ```
-Note - Installation VIA Cargo might fail if you dont have `libzip`, `zlib` and `liblzma` installed on your system
+Note - Installation VIA Cargo might fail if you dont have `protobuf-compiler`, `libzip`, `zlib` and `liblzma` installed on your system
 
 
   ---
