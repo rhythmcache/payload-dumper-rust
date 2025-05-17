@@ -1,7 +1,7 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut config = prost_build::Config::new();
-    config.type_attribute(".", "#[derive(serde::Serialize)]");
-    config.compile_protos(&["proto/update_metadata.proto"], &["proto/"])?;
+   // let mut config = prost_build::Config::new();
+  //  config.type_attribute(".", "#[derive(serde::Serialize)]");
+ //   config.compile_protos(&["proto/update_metadata.proto"], &["proto/"])?;
     let target = std::env::var("TARGET").unwrap_or_default();
     let is_android = target.contains("android");
     let is_musl = target.contains("musl");
