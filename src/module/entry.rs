@@ -31,7 +31,6 @@ lazy_static! {
 
 pub fn run() -> Result<()> {
     let args = Args::parse();
-
     let thread_count = if args.no_parallel {
         1
     } else if let Some(threads) = args.threads {
@@ -93,7 +92,7 @@ pub fn run() -> Result<()> {
         };
 
         if is_zip || content_type.as_deref() == Some("application/zip") {
-            let reader = RemoteZipReader::new(url)?;
+            let reader = RemoteZipReader::new_for_parallel(url)?;
             let file_size = reader.http_reader.content_length;
             main_pb.set_message("Connection established");
             if file_size > 1024 * 1024 && !FILE_SIZE_INFO_SHOWN.swap(true, Ordering::SeqCst) {
@@ -375,7 +374,8 @@ pub fn run() -> Result<()> {
             ));
 
             let mut reader: Box<dyn ReadSeek> = if is_url {
-                Box::new(RemoteZipReader::new(payload_url.to_string())?) as Box<dyn ReadSeek>
+                Box::new(RemoteZipReader::new_for_parallel(payload_url.to_string())?)
+                    as Box<dyn ReadSeek>
             } else {
                 payload_reader
             };
