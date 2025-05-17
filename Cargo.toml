@@ -43,7 +43,7 @@ default = []
 hickory-dns = ["reqwest-hickory-resolver"]
 
 [build-dependencies]
-prost-build = "0.13.5"
+# prost-build = "0.13.5"
 cc = "1.0.83"
 
 [profile.release]
