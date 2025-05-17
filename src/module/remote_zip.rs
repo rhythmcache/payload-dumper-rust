@@ -10,19 +10,6 @@ pub struct RemoteZipReader {
 }
 
 impl RemoteZipReader {
-    pub fn new(url: String) -> Result<Self> {
-        let http_reader = HttpReader::new_silent(url.clone())?;
-        if let Ok(payload_info) = Self::find_payload_via_metadata(&mut http_reader.clone()) {
-            return Ok(Self {
-                http_reader,
-                payload_offset: payload_info.0,
-                payload_size: payload_info.1,
-                current_position: 0,
-            });
-        }
-        Self::find_payload_via_zip_structure(http_reader)
-    }
-
     fn find_payload_via_metadata(http_reader: &mut HttpReader) -> Result<(u64, u64)> {
         let search_size = std::cmp::min(http_reader.content_length, 131072);
         http_reader.seek(SeekFrom::End(-(search_size as i64)))?;
