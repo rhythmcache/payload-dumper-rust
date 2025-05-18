@@ -1,9 +1,7 @@
 use clap::Parser;
 use serde::Serialize;
 use std::path::PathBuf;
-// use std::os::raw::{c_char, c_uint, c_void};
-// use memmap2::Mmap;
-// use reqwest::blocking::Client;
+
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
