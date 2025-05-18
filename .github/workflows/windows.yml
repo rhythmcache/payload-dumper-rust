@@ -7,7 +7,7 @@ jobs:
   build:
     strategy:
       matrix:
-        architecture: [x86_64, i686]
+        architecture: [x86_64, i686, aarch64]
       fail-fast: false
 
     runs-on: ubuntu-latest
@@ -17,8 +17,22 @@ jobs:
       - name: Install protoc and build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y protobuf-compiler cmake mingw-w64
+          sudo apt-get install -y protobuf-compiler cmake
           protoc --version
+
+      - name: Download LLVM-MinGW toolchain (for ARM64)
+        if: matrix.architecture == 'aarch64'
+        run: |
+          cd /tmp
+          wget https://github.com/mstorsjo/llvm-mingw/releases/download/20250514/llvm-mingw-20250514-msvcrt-ubuntu-22.04-x86_64.tar.xz
+          tar -xf llvm-mingw-20250514-msvcrt-ubuntu-22.04-x86_64.tar.xz
+          sudo mv llvm-mingw-20250514-msvcrt-ubuntu-22.04-x86_64 /opt/llvm-mingw
+          echo "/opt/llvm-mingw/bin" >> $GITHUB_PATH
+
+      - name: Install MinGW (for x86_64/i686)
+        if: matrix.architecture != 'aarch64'
+        run: |
+          sudo apt-get install -y mingw-w64
 
       - name: Set up Rust
         uses: actions-rs/toolchain@v1
@@ -45,6 +59,13 @@ jobs:
               echo "CXX=i686-w64-mingw32-g++" >> $GITHUB_ENV
               echo "HOST_TRIPLE=i686-w64-mingw32" >> $GITHUB_ENV
               ;;
+            aarch64)
+              echo "TARGET=aarch64-pc-windows-gnullvm" >> $GITHUB_ENV
+              echo "ARCH_DIR=aarch64" >> $GITHUB_ENV
+              echo "CC=aarch64-w64-mingw32-clang" >> $GITHUB_ENV
+              echo "CXX=aarch64-w64-mingw32-clang++" >> $GITHUB_ENV
+              echo "HOST_TRIPLE=aarch64-w64-mingw32" >> $GITHUB_ENV
+              ;;
           esac
 
       - name: Add Rust target
@@ -53,22 +74,35 @@ jobs:
       - name: Setup Cargo config
         run: |
           mkdir -p .cargo
-          cat > .cargo/config.toml << EOF
+          if [ "${{ matrix.architecture }}" = "aarch64" ]; then
+            cat > .cargo/config.toml << EOF
+          [target.${{ env.TARGET }}]
+          linker = "${{ env.CC }}"
+          EOF
+          else
+            cat > .cargo/config.toml << EOF
           [target.${{ env.TARGET }}]
           linker = "${{ env.CC }}"
           rustflags = ["-L", "lib/win/${{ env.ARCH_DIR }}", "-l", "lzma", "-l", "zip", "-l", "z"]
           EOF
+          fi
           cat .cargo/config.toml
 
       - name: Prepare library directories
         run: |
           mkdir -p $PWD/lib/win/${{ env.ARCH_DIR }}
-          mkdir -p $PWD/lib/win/${{ env.ARCH_DIR }}/include
-          mkdir -p $PWD/lib/win/${{ env.ARCH_DIR }}/lib
-          mkdir -p $PWD/lib/win/${{ env.ARCH_DIR }}/pkgconfig
           echo "INSTALL_PREFIX=$PWD/lib/win/${{ env.ARCH_DIR }}" >> $GITHUB_ENV
           echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$PWD/lib/win/${{ env.ARCH_DIR }}/lib/pkgconfig" >> $GITHUB_ENV
+          if [ "${{ matrix.architecture }}" = "aarch64" ]; then
+            # For ARM64, set PKG_CONFIG_PATH to the lib directory itself
+            echo "PKG_CONFIG_PATH=$PWD/lib/win/${{ env.ARCH_DIR }}" >> $GITHUB_ENV
+          else
+            # For x86/x64, use the traditional structure
+            mkdir -p $PWD/lib/win/${{ env.ARCH_DIR }}/include
+            mkdir -p $PWD/lib/win/${{ env.ARCH_DIR }}/lib
+            mkdir -p $PWD/lib/win/${{ env.ARCH_DIR }}/pkgconfig
+            echo "PKG_CONFIG_PATH=$PWD/lib/win/${{ env.ARCH_DIR }}/lib/pkgconfig" >> $GITHUB_ENV
+          fi
           echo "CFLAGS=-I$PWD/lib/win/${{ env.ARCH_DIR }}/include" >> $GITHUB_ENV
           echo "LDFLAGS=-L$PWD/lib/win/${{ env.ARCH_DIR }}/lib" >> $GITHUB_ENV
 
@@ -79,15 +113,29 @@ jobs:
           tar -xzf zlib-1.3.1.tar.gz
           cd zlib-1.3.1
           
-          # Build for MinGW
-          export BINARY_PATH=${{ env.INSTALL_PREFIX }}/bin
-          export INCLUDE_PATH=${{ env.INSTALL_PREFIX }}/include
-          export LIBRARY_PATH=${{ env.INSTALL_PREFIX }}/lib
-          make -f win32/Makefile.gcc PREFIX=${{ env.HOST_TRIPLE }}- CC=${{ env.CC }}
-          make -f win32/Makefile.gcc install PREFIX=${{ env.HOST_TRIPLE }}- CC=${{ env.CC }}
+          if [ "${{ matrix.architecture }}" = "aarch64" ]; then
+            # For ARM64, use clang with LLVM-MinGW - install directly to lib directory
+            export CC="${{ env.CC }}"
+            export CFLAGS="-target aarch64-w64-mingw32"
+            make -f win32/Makefile.gcc PREFIX=${{ env.HOST_TRIPLE }}- CC="${{ env.CC }}" CFLAGS="$CFLAGS"
+            
+            # Install directly to the lib directory (matching your local setup)
+            install -m 644 libz.a ${{ env.INSTALL_PREFIX }}/
+          else
+            # Build for MinGW x86/x64
+            export BINARY_PATH=${{ env.INSTALL_PREFIX }}/bin
+            export INCLUDE_PATH=${{ env.INSTALL_PREFIX }}/include
+            export LIBRARY_PATH=${{ env.INSTALL_PREFIX }}/lib
+            make -f win32/Makefile.gcc PREFIX=${{ env.HOST_TRIPLE }}- CC=${{ env.CC }}
+            make -f win32/Makefile.gcc install PREFIX=${{ env.HOST_TRIPLE }}- CC=${{ env.CC }}
+          fi
           
           # Verify installation
-          ls -la ${{ env.INSTALL_PREFIX }}/lib/libz.a || echo "Failed to build libz.a"
+          if [ "${{ matrix.architecture }}" = "aarch64" ]; then
+            ls -la ${{ env.INSTALL_PREFIX }}/libz.a || echo "Failed to build libz.a"
+          else
+            ls -la ${{ env.INSTALL_PREFIX }}/lib/libz.a || echo "Failed to build libz.a"
+          fi
 
       - name: Build liblzma
         run: |
@@ -97,17 +145,39 @@ jobs:
           cd xz-5.8.1
           
           # Configure and build
-          ./configure --prefix=${{ env.INSTALL_PREFIX }} \
-            --disable-shared --enable-static \
-            --disable-nls --disable-xz --disable-xzdec \
-            --disable-lzmadec --disable-lzmainfo \
-            --host=${{ env.HOST_TRIPLE }}
-          
-          make -j$(nproc)
-          make install
+          if [ "${{ matrix.architecture }}" = "aarch64" ]; then
+            export CC="${{ env.CC }}"
+            export CFLAGS="-target aarch64-w64-mingw32 -fPIC"
+            export LDFLAGS="-target aarch64-w64-mingw32"
+            
+            ./configure --prefix=/tmp/liblzma-install \
+              --disable-shared --enable-static \
+              --disable-nls --disable-xz --disable-xzdec \
+              --disable-lzmadec --disable-lzmainfo \
+              --host=${{ env.HOST_TRIPLE }}
+            
+            make -j$(nproc)
+            make install
+            
+            # Copy only the static library to match your setup
+            cp /tmp/liblzma-install/lib/liblzma.a ${{ env.INSTALL_PREFIX }}/
+          else
+            ./configure --prefix=${{ env.INSTALL_PREFIX }} \
+              --disable-shared --enable-static \
+              --disable-nls --disable-xz --disable-xzdec \
+              --disable-lzmadec --disable-lzmainfo \
+              --host=${{ env.HOST_TRIPLE }}
+            
+            make -j$(nproc)
+            make install
+          fi
           
           # Verify installation
-          ls -la ${{ env.INSTALL_PREFIX }}/lib/liblzma.a || echo "Failed to build liblzma.a"
+          if [ "${{ matrix.architecture }}" = "aarch64" ]; then
+            ls -la ${{ env.INSTALL_PREFIX }}/liblzma.a || echo "Failed to build liblzma.a"
+          else
+            ls -la ${{ env.INSTALL_PREFIX }}/lib/liblzma.a || echo "Failed to build liblzma.a"
+          fi
         env:
           CC: ${{ env.CC }}
           CFLAGS: -fPIC ${{ env.CFLAGS }}
@@ -122,7 +192,46 @@ jobs:
           mkdir build && cd build
           
           # Create toolchain file for cross-compilation
-          cat > cross-toolchain.cmake << EOF
+          if [ "${{ matrix.architecture }}" = "aarch64" ]; then
+            cat > cross-toolchain.cmake << EOF
+          set(CMAKE_SYSTEM_NAME Windows)
+          set(CMAKE_C_COMPILER ${{ env.CC }})
+          set(CMAKE_CXX_COMPILER ${{ env.CXX }})
+          set(CMAKE_SYSTEM_PROCESSOR aarch64)
+          set(CMAKE_FIND_ROOT_PATH ${{ env.INSTALL_PREFIX }})
+          set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+          set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+          set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+          set(CMAKE_C_FLAGS "-target aarch64-w64-mingw32")
+          set(CMAKE_CXX_FLAGS "-target aarch64-w64-mingw32")
+          EOF
+            
+            cmake .. \
+              -DCMAKE_TOOLCHAIN_FILE=cross-toolchain.cmake \
+              -DCMAKE_INSTALL_PREFIX=/tmp/libzip-install \
+              -DBUILD_SHARED_LIBS=OFF \
+              -DBUILD_EXAMPLES=OFF \
+              -DBUILD_DOC=OFF \
+              -DBUILD_TOOLS=OFF \
+              -DBUILD_REGRESS=OFF \
+              -DENABLE_COMMONCRYPTO=OFF \
+              -DENABLE_GNUTLS=OFF \
+              -DENABLE_MBEDTLS=OFF \
+              -DENABLE_OPENSSL=OFF \
+              -DENABLE_WINDOWS_CRYPTO=OFF \
+              -DENABLE_BZIP2=OFF \
+              -DZLIB_INCLUDE_DIR=/tmp/zlib-1.3.1 \
+              -DZLIB_LIBRARY=${{ env.INSTALL_PREFIX }}/libz.a \
+              -DLIBLZMA_INCLUDE_DIR=/tmp/xz-5.8.1/src/liblzma/api \
+              -DLIBLZMA_LIBRARY=${{ env.INSTALL_PREFIX }}/liblzma.a
+              
+            cmake --build . -j$(nproc)
+            cmake --install .
+            
+            # Copy only the static library to match your setup
+            cp /tmp/libzip-install/lib/libzip.a ${{ env.INSTALL_PREFIX }}/
+          else
+            cat > cross-toolchain.cmake << EOF
           set(CMAKE_SYSTEM_NAME Windows)
           set(CMAKE_C_COMPILER ${{ env.CC }})
           set(CMAKE_CXX_COMPILER ${{ env.CXX }})
@@ -134,30 +243,35 @@ jobs:
           set(CMAKE_RC_COMPILER ${{ env.HOST_TRIPLE }}-windres)
           EOF
             
-          cmake .. \
-            -DCMAKE_TOOLCHAIN_FILE=cross-toolchain.cmake \
-            -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_PREFIX }} \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DBUILD_EXAMPLES=OFF \
-            -DBUILD_DOC=OFF \
-            -DBUILD_TOOLS=OFF \
-            -DBUILD_REGRESS=OFF \
-            -DENABLE_COMMONCRYPTO=OFF \
-            -DENABLE_GNUTLS=OFF \
-            -DENABLE_MBEDTLS=OFF \
-            -DENABLE_OPENSSL=OFF \
-            -DENABLE_WINDOWS_CRYPTO=OFF \
-            -DENABLE_BZIP2=OFF \
-            -DZLIB_INCLUDE_DIR=${{ env.INSTALL_PREFIX }}/include \
-            -DZLIB_LIBRARY=${{ env.INSTALL_PREFIX }}/lib/libz.a \
-            -DLIBLZMA_INCLUDE_DIR=${{ env.INSTALL_PREFIX }}/include \
-            -DLIBLZMA_LIBRARY=${{ env.INSTALL_PREFIX }}/lib/liblzma.a
+            cmake .. \
+              -DCMAKE_TOOLCHAIN_FILE=cross-toolchain.cmake \
+              -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_PREFIX }} \
+              -DBUILD_SHARED_LIBS=OFF \
+              -DBUILD_EXAMPLES=OFF \
+              -DBUILD_DOC=OFF \
+              -DBUILD_TOOLS=OFF \
+              -DBUILD_REGRESS=OFF \
+              -DENABLE_COMMONCRYPTO=OFF \
+              -DENABLE_GNUTLS=OFF \
+              -DENABLE_MBEDTLS=OFF \
+              -DENABLE_OPENSSL=OFF \
+              -DENABLE_WINDOWS_CRYPTO=OFF \
+              -DENABLE_BZIP2=OFF \
+              -DZLIB_INCLUDE_DIR=${{ env.INSTALL_PREFIX }}/include \
+              -DZLIB_LIBRARY=${{ env.INSTALL_PREFIX }}/lib/libz.a \
+              -DLIBLZMA_INCLUDE_DIR=${{ env.INSTALL_PREFIX }}/include \
+              -DLIBLZMA_LIBRARY=${{ env.INSTALL_PREFIX }}/lib/liblzma.a
           
-          cmake --build . -j$(nproc)
-          cmake --install .
+            cmake --build . -j$(nproc)
+            cmake --install .
+          fi
           
           # Verify installation
-          ls -la ${{ env.INSTALL_PREFIX }}/lib/libzip.a || echo "Failed to build libzip.a"
+          if [ "${{ matrix.architecture }}" = "aarch64" ]; then
+            ls -la ${{ env.INSTALL_PREFIX }}/libzip.a || echo "Failed to build libzip"
+          else
+            ls -la ${{ env.INSTALL_PREFIX }}/lib/libzip.a || echo "Failed to build libzip"
+          fi
         env:
           CC: ${{ env.CC }}
           CXX: ${{ env.CXX }}
@@ -168,14 +282,19 @@ jobs:
       - name: Verify libraries
         run: |
           echo "Checking library directories:"
-          ls -la ${{ env.INSTALL_PREFIX }}/lib/ || echo "No lib directory found"
-          echo "Static libraries:"
-          find ${{ env.INSTALL_PREFIX }}/lib -name "*.a" || echo "No static libraries found"
+          if [ "${{ matrix.architecture }}" = "aarch64" ]; then
+            ls -la ${{ env.INSTALL_PREFIX }}/ || echo "No lib directory found"
+            echo "Static libraries:"
+            find ${{ env.INSTALL_PREFIX }} -name "*.a" || echo "No libraries found"
+          else
+            ls -la ${{ env.INSTALL_PREFIX }}/lib/ || echo "No lib directory found"
+            echo "Static libraries:"
+            find ${{ env.INSTALL_PREFIX }}/lib -name "*.a" || echo "No libraries found"
+          fi
 
       - name: Build for ${{ matrix.architecture }}
         run: |
           echo "Building for ${{ env.TARGET }}"
-          RUSTFLAGS="-C link-args=-lz -C link-args=-llzma -C link-args=-lzip" \
           cargo build --release --target ${{ env.TARGET }}
         env:
           PKG_CONFIG_ALLOW_CROSS: 1
