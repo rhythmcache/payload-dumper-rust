@@ -99,8 +99,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("cargo:warning=Building for Windows ARM64 architecture");
         }
     }
-    println!("cargo:rustc-link-lib=static=lzma");
-    println!("cargo:rustc-link-lib=static=zip");
-    println!("cargo:rustc-link-lib=static=z");
+    println!("cargo:rustc-link-lib=lzma");
+    println!("cargo:rustc-link-lib=zip");
+    println!("cargo:rustc-link-lib=z");
     Ok(())
 }
