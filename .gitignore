@@ -1,7 +1,7 @@
 /photos/
 /scripts/
 /module/
-/.github/
-/updateJson/
+/updateJson
+/lib/
 /changelog.md
 /README.md
