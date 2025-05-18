@@ -3,7 +3,7 @@ use byteorder::{BigEndian, ReadBytesExt};
 use bzip2::read::BzDecoder;
 use std::io::{Cursor, Read};
 
-use crate::BSDF2_MAGIC;
+const BSDF2_MAGIC: &[u8] = b"BSDF2";
 
 pub fn bsdf2_read_patch<R: Read>(reader: &mut R) -> Result<(i64, Vec<(i64, i64, i64)>, Vec<u8>)> {
     let mut magic = [0u8; 8];
