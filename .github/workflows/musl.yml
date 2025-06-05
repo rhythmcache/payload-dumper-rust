@@ -14,10 +14,10 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install protoc and build dependencies
+      - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y protobuf-compiler cmake
+          sudo apt-get install -y aria2 cmake
           protoc --version
 
       - name: Set up Rust
@@ -85,7 +85,7 @@ jobs:
         run: |
           mkdir -p /tmp/musl-cross
           cd /tmp/musl-cross
-          wget ${{ env.TOOLCHAIN_URL }} -O toolchain.tgz
+          aria2c -x 16 -s 16 -o toolchain.tgz "${{ env.TOOLCHAIN_URL }}"
           tar -xzf toolchain.tgz
           find /tmp/musl-cross -name "${{ env.CC }}" -type f
           TOOLCHAIN_BIN=$(find /tmp/musl-cross -name "${{ env.CC }}" -type f | xargs dirname)
