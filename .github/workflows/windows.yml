@@ -24,9 +24,9 @@ jobs:
         if: matrix.architecture == 'aarch64'
         run: |
           cd /tmp
-          wget https://github.com/mstorsjo/llvm-mingw/releases/download/20250514/llvm-mingw-20250514-msvcrt-ubuntu-22.04-x86_64.tar.xz
-          tar -xf llvm-mingw-20250514-msvcrt-ubuntu-22.04-x86_64.tar.xz
-          sudo mv llvm-mingw-20250514-msvcrt-ubuntu-22.04-x86_64 /opt/llvm-mingw
+          wget https://github.com/mstorsjo/llvm-mingw/releases/download/20250528/llvm-mingw-20250528-msvcrt-ubuntu-22.04-x86_64.tar.xz
+          tar -xf llvm-mingw-20250528-msvcrt-ubuntu-22.04-x86_64.tar.xz
+          sudo mv llvm-mingw-20250528-msvcrt-ubuntu-22.04-x86_64 /opt/llvm-mingw
           echo "/opt/llvm-mingw/bin" >> $GITHUB_PATH
 
       - name: Install MinGW (for x86_64/i686)
