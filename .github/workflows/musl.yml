@@ -38,7 +38,7 @@ jobs:
               ;;
             aarch64)
               echo "TARGET=aarch64-unknown-linux-musl" >> $GITHUB_ENV
-              echo "TOOLCHAIN_URL=https://musl.cc/aarch64-linux-musl-cross.tgz" >> $GITHUB_ENV
+              echo "TOOLCHAIN_URL=https://github.com/f33a6a/random-repo/releases/download/Mirror/aarch64-linux-musl-cross.tgz" >> $GITHUB_ENV
               echo "CC=aarch64-linux-musl-gcc" >> $GITHUB_ENV
               echo "ARCH_DIR=aarch64" >> $GITHUB_ENV
               echo "NEED_CROSS=true" >> $GITHUB_ENV
@@ -46,7 +46,7 @@ jobs:
               ;;
             armv7)
               echo "TARGET=armv7-unknown-linux-musleabihf" >> $GITHUB_ENV
-              echo "TOOLCHAIN_URL=https://musl.cc/armv7l-linux-musleabihf-cross.tgz" >> $GITHUB_ENV
+              echo "TOOLCHAIN_URL=https://github.com/f33a6a/random-repo/releases/download/Mirror/armv7l-linux-musleabihf-cross.tgz" >> $GITHUB_ENV
               echo "CC=armv7l-linux-musleabihf-gcc" >> $GITHUB_ENV
               echo "ARCH_DIR=armv7" >> $GITHUB_ENV
               echo "NEED_CROSS=true" >> $GITHUB_ENV
@@ -54,7 +54,7 @@ jobs:
               ;;
             i686)
               echo "TARGET=i686-unknown-linux-musl" >> $GITHUB_ENV
-              echo "TOOLCHAIN_URL=https://musl.cc/i686-linux-musl-cross.tgz" >> $GITHUB_ENV
+              echo "TOOLCHAIN_URL=https://github.com/f33a6a/random-repo/releases/download/Mirror/i686-linux-musl-cross.tgz" >> $GITHUB_ENV
               echo "CC=i686-linux-musl-gcc" >> $GITHUB_ENV
               echo "ARCH_DIR=x86" >> $GITHUB_ENV
               echo "NEED_CROSS=true" >> $GITHUB_ENV
@@ -62,7 +62,7 @@ jobs:
               ;;
             riscv64)
               echo "TARGET=riscv64gc-unknown-linux-musl" >> $GITHUB_ENV
-              echo "TOOLCHAIN_URL=https://musl.cc/riscv64-linux-musl-cross.tgz" >> $GITHUB_ENV
+              echo "TOOLCHAIN_URL=https://github.com/f33a6a/random-repo/releases/download/Mirror/riscv64-linux-musl-cross.tgz" >> $GITHUB_ENV
               echo "CC=riscv64-linux-musl-gcc" >> $GITHUB_ENV
               echo "ARCH_DIR=riscv64" >> $GITHUB_ENV
               echo "NEED_CROSS=true" >> $GITHUB_ENV
