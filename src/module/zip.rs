@@ -4,6 +4,11 @@ use std::ffi::CStr;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::os::raw::{c_char, c_int, c_void};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::ffi::OsStrExt;
+#[cfg(target_os = "windows")]
+use std::path::Path;
+
 use crate::module::utils::get_zip_error_message;
 
 #[repr(C)]
@@ -12,6 +17,13 @@ pub struct zip_stat_t {
     name: *const c_char,
     index: u64,
     size: u64,
+}
+
+#[repr(C)]
+pub struct zip_error_t {
+    zip_err: c_int,
+    sys_err: c_int,
+    str_: *mut c_char,
 }
 
 pub struct LibZipReader {
@@ -24,6 +36,7 @@ pub struct LibZipReader {
     buffer_size: usize,
     cached_filename: Option<std::ffi::CString>,
     file_index: i64,
+    is_seekable: Option<bool>, 
 }
 
 #[link(name = "zip")]
@@ -48,6 +61,41 @@ unsafe extern "C" {
         st: *mut zip_stat_t,
     ) -> c_int;
     pub fn zip_fopen(archive: *mut c_void, name: *const c_char, flags: c_int) -> *mut c_void;
+    pub fn zip_fseek(file: *mut c_void, offset: i64, whence: c_int) -> i8;
+    pub fn zip_file_is_seekable(file: *mut c_void) -> c_int;
+    
+    
+    pub fn zip_open_from_source(
+        source: *mut c_void, // zip_source_t*
+        flags: c_int,
+        error: *mut zip_error_t,
+    ) -> *mut c_void; // zip_t*
+    
+    pub fn zip_source_free(source: *mut c_void); // zip_source_t*
+    
+    pub fn zip_error_init(error: *mut zip_error_t);
+    
+    pub fn zip_error_fini(error: *mut zip_error_t);
+    
+    pub fn zip_error_code_zip(error: *const zip_error_t) -> c_int;
+    
+    
+    #[cfg(target_os = "windows")]
+    pub fn zip_source_win32w_create(
+        fname: *const u16, // wchar_t* on Windows
+        start: u64,
+        len: i64,
+        error: *mut zip_error_t,
+    ) -> *mut c_void; // zip_source_t*
+    
+    // Unix/Linux file source functions
+    #[cfg(not(target_os = "windows"))]
+    pub fn zip_source_file_create(
+        fname: *const c_char,
+        start: u64,
+        len: i64,
+        error: *mut zip_error_t,
+    ) -> *mut c_void; // zip_source_t*
 }
 
 impl Default for zip_stat_t {
@@ -57,6 +105,16 @@ impl Default for zip_stat_t {
             name: std::ptr::null(),
             index: 0,
             size: 0,
+        }
+    }
+}
+
+impl Default for zip_error_t {
+    fn default() -> Self {
+        zip_error_t {
+            zip_err: 0,
+            sys_err: 0,
+            str_: std::ptr::null_mut(),
         }
     }
 }
@@ -80,7 +138,7 @@ impl LibZipReader {
                 }
             }
 
-            // useless fallback
+            
             if file.is_null() {
                 let num_entries = zip_get_num_entries(archive, 0);
 
@@ -125,9 +183,7 @@ impl LibZipReader {
             };
 
             let buffer_size = 8 * 1024 * 1024;
-
             let buffer = vec![0u8; buffer_size];
-
             let mmap = None;
 
             Ok(Self {
@@ -140,32 +196,65 @@ impl LibZipReader {
                 buffer_size,
                 cached_filename,
                 file_index,
+                is_seekable: None,
             })
         }
     }
+
+    #[cfg(target_os = "windows")]
     pub fn new_for_parallel(path: String) -> Result<Self> {
         unsafe {
-            let mut error = 0;
-            // try to normalize paths on windows
-            let normalized_path = path.replace('\\', "/");
+            let path_wide: Vec<u16> = Path::new(&path)
+                .as_os_str()
+                .encode_wide()
+                .chain(std::iter::once(0)) // null terminate
+                .collect();
 
-            let c_path = match std::ffi::CString::new(normalized_path.clone()) {
-                Ok(p) => p,
-                Err(e) => {
-                    return Err(anyhow!("Invalid path contains null bytes: {}", e));
-                }
-            };
+            let mut error = zip_error_t::default();
+            zip_error_init(&mut error);
 
-            let archive = zip_open(c_path.as_ptr(), 0, &mut error);
-            if archive.is_null() {
-                let error_msg = get_zip_error_message(error);
+            
+            let source = zip_source_win32w_create(
+                path_wide.as_ptr(),
+                0,  // start offset
+                -1, // read entire file
+                &mut error,
+            );
+
+            if source.is_null() {
+                zip_error_fini(&mut error);
+                let error_code = zip_error_code_zip(&error);
+                let error_msg = get_zip_error_message(error_code);
                 return Err(anyhow!(
-                    "Failed to open ZIP file: {} ({})",
+                    "Failed to create Windows Unicode source for ZIP file: {} ({})",
                     error_msg,
-                    error
+                    error_code
                 ));
             }
 
+            
+            let mut open_error = zip_error_t::default();
+            zip_error_init(&mut open_error);
+            
+            let archive = zip_open_from_source(source, 0, &mut open_error);
+            
+            if archive.is_null() {
+                let error_code = zip_error_code_zip(&open_error);
+                let error_msg = get_zip_error_message(error_code);
+                zip_source_free(source);
+                zip_error_fini(&mut error);
+                zip_error_fini(&mut open_error);
+                return Err(anyhow!(
+                    "Failed to open ZIP file from Windows Unicode source: {} ({})",
+                    error_msg,
+                    error_code
+                ));
+            }
+
+            zip_error_fini(&mut error);
+            zip_error_fini(&mut open_error);
+
+            
             match Self::new(archive, path) {
                 Ok(reader) => Ok(reader),
                 Err(e) => {
@@ -173,6 +262,263 @@ impl LibZipReader {
                     Err(e)
                 }
             }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    pub fn new_for_parallel(path: String) -> Result<Self> {
+        unsafe {
+            
+            let c_path = match std::ffi::CString::new(path.clone()) {
+                Ok(p) => p,
+                Err(e) => {
+                    return Err(anyhow!("Invalid path contains null bytes: {}", e));
+                }
+            };
+
+            let mut error = zip_error_t::default();
+            zip_error_init(&mut error);
+
+            
+            let source = zip_source_file_create(
+                c_path.as_ptr(),
+                0,  // start offset
+                -1, // read entire file
+                &mut error,
+            );
+
+            if source.is_null() {
+                zip_error_fini(&mut error);
+                let error_code = zip_error_code_zip(&error);
+                let error_msg = get_zip_error_message(error_code);
+                return Err(anyhow!(
+                    "Failed to create file source for ZIP file: {} ({})",
+                    error_msg,
+                    error_code
+                ));
+            }
+
+            
+            let mut open_error = zip_error_t::default();
+            zip_error_init(&mut open_error);
+            
+            let archive = zip_open_from_source(source, 0, &mut open_error);
+            
+            if archive.is_null() {
+                let error_code = zip_error_code_zip(&open_error);
+                let error_msg = get_zip_error_message(error_code);
+                zip_source_free(source);
+                zip_error_fini(&mut error);
+                zip_error_fini(&mut open_error);
+                return Err(anyhow!(
+                    "Failed to open ZIP file from file source: {} ({})",
+                    error_msg,
+                    error_code
+                ));
+            }
+
+            zip_error_fini(&mut error);
+            zip_error_fini(&mut open_error);
+
+            
+            match Self::new(archive, path) {
+                Ok(reader) => Ok(reader),
+                Err(e) => {
+                    zip_close(archive);
+                    Err(e)
+                }
+            }
+        }
+    }
+
+    // Check if the file is seekable 
+    fn check_seekable(&mut self) -> io::Result<bool> {
+        if let Some(seekable) = self.is_seekable {
+            return Ok(seekable);
+        }
+
+        unsafe {
+            if self.file.is_null() {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "File handle is null",
+                ));
+            }
+
+            let result = zip_file_is_seekable(self.file);
+            match result {
+                1 => {
+                    self.is_seekable = Some(true);
+                    Ok(true)
+                }
+                0 => {
+                    self.is_seekable = Some(false);
+                    Ok(false)
+                }
+                -1 => Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Invalid argument when checking seekability",
+                )),
+                _ => Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Unexpected return value from zip_file_is_seekable",
+                )),
+            }
+        }
+    }
+
+    
+    fn fast_seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        let new_pos = match pos {
+            SeekFrom::Start(offset) => offset,
+            SeekFrom::Current(offset) => {
+                if offset >= 0 {
+                    self.current_position.saturating_add(offset as u64)
+                } else {
+                    self.current_position.saturating_sub(offset.abs() as u64)
+                }
+            }
+            SeekFrom::End(offset) => {
+                if offset >= 0 {
+                    self.file_size.saturating_add(offset as u64)
+                } else {
+                    self.file_size.saturating_sub(offset.abs() as u64)
+                }
+            }
+        };
+
+        if new_pos > self.file_size {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Attempted to seek past end of file",
+            ));
+        }
+
+    
+        let (offset, whence) = match pos {
+            SeekFrom::Start(offset) => (offset as i64, 0), // SEEK_SET
+            SeekFrom::Current(offset) => (offset, 1), // SEEK_CUR
+            SeekFrom::End(offset) => (offset, 2), // SEEK_END
+        };
+
+        unsafe {
+            if self.file.is_null() {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "File handle is null",
+                ));
+            }
+
+            let result = zip_fseek(self.file, offset, whence);
+            if result != 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "zip_fseek failed",
+                ));
+            }
+
+            self.current_position = new_pos;
+            Ok(self.current_position)
+        }
+    }
+
+    
+    fn slow_seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        let new_pos = match pos {
+            SeekFrom::Start(offset) => offset,
+            SeekFrom::Current(offset) => {
+                if offset >= 0 {
+                    self.current_position.saturating_add(offset as u64)
+                } else {
+                    self.current_position.saturating_sub(offset.abs() as u64)
+                }
+            }
+            SeekFrom::End(offset) => {
+                if offset >= 0 {
+                    self.file_size.saturating_add(offset as u64)
+                } else {
+                    self.file_size.saturating_sub(offset.abs() as u64)
+                }
+            }
+        };
+
+        if new_pos > self.file_size {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Attempted to seek past end of file",
+            ));
+        }
+
+        if new_pos == self.current_position {
+            return Ok(new_pos);
+        }
+
+        // Small forward seeks can be done by reading and discarding
+        if new_pos > self.current_position && new_pos - self.current_position <= 8 * 1024 {
+            let mut skip_buf = vec![0u8; (new_pos - self.current_position) as usize];
+            self.read_exact(&mut skip_buf)?;
+            return Ok(self.current_position);
+        }
+
+        // For larger seeks, reopen the file and read to the position
+        unsafe {
+            if !self.file.is_null() {
+                zip_fclose(self.file);
+                self.file = std::ptr::null_mut();
+            }
+
+            if self.file_index >= 0 {
+                self.file = zip_fopen_index(self.archive, self.file_index as u64, 0);
+            } else if let Some(ref filename) = self.cached_filename {
+                self.file = zip_fopen(self.archive, filename.as_ptr(), 0);
+            } else {
+                // Fallback
+                let payload_name = match CStr::from_bytes_with_nul(b"payload.bin\0") {
+                    Ok(name) => name,
+                    Err(_) => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            "Failed to create CStr for payload.bin",
+                        ));
+                    }
+                };
+                self.file = zip_fopen(self.archive, payload_name.as_ptr(), 0);
+            }
+
+            if self.file.is_null() {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Failed to reopen file for seeking",
+                ));
+            }
+
+            // Reset seekability cache since we reopened the file
+            self.is_seekable = None;
+            self.current_position = 0;
+
+            if new_pos > 0 {
+                if self.buffer.len() < self.buffer_size {
+                    self.buffer.resize(self.buffer_size, 0);
+                }
+
+                let mut remaining = new_pos;
+                while remaining > 0 {
+                    let to_read = remaining.min(self.buffer.len() as u64) as usize;
+                    let read_bytes =
+                        zip_fread(self.file, self.buffer.as_mut_ptr() as *mut c_void, to_read);
+                    if read_bytes <= 0 {
+                        return Err(io::Error::new(io::ErrorKind::Other, "Failed to seek"));
+                    }
+                    self.current_position += read_bytes as u64;
+                    remaining -= read_bytes as u64;
+
+                    if read_bytes < to_read as isize {
+                        break;
+                    }
+                }
+            }
+
+            Ok(self.current_position)
         }
     }
 }
@@ -193,6 +539,7 @@ impl Drop for LibZipReader {
         }
     }
 }
+
 impl Read for LibZipReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if buf.is_empty() {
@@ -256,101 +603,49 @@ impl Read for LibZipReader {
         }
     }
 }
+
 impl Seek for LibZipReader {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-        let new_pos = match pos {
-            SeekFrom::Start(offset) => offset,
-            SeekFrom::Current(offset) => {
-                if offset >= 0 {
-                    self.current_position.saturating_add(offset as u64)
-                } else {
-                    self.current_position.saturating_sub(offset.abs() as u64)
-                }
-            }
-            SeekFrom::End(offset) => {
-                if offset >= 0 {
-                    self.file_size.saturating_add(offset as u64)
-                } else {
-                    self.file_size.saturating_sub(offset.abs() as u64)
-                }
-            }
-        };
-        if new_pos > self.file_size {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Attempted to seek past end of file",
-            ));
-        }
+        // Handle memory-mapped files first
         if self.mmap.is_some() {
+            let new_pos = match pos {
+                SeekFrom::Start(offset) => offset,
+                SeekFrom::Current(offset) => {
+                    if offset >= 0 {
+                        self.current_position.saturating_add(offset as u64)
+                    } else {
+                        self.current_position.saturating_sub(offset.abs() as u64)
+                    }
+                }
+                SeekFrom::End(offset) => {
+                    if offset >= 0 {
+                        self.file_size.saturating_add(offset as u64)
+                    } else {
+                        self.file_size.saturating_sub(offset.abs() as u64)
+                    }
+                }
+            };
+            
+            if new_pos > self.file_size {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Attempted to seek past end of file",
+                ));
+            }
+            
             self.current_position = new_pos;
             return Ok(self.current_position);
         }
-        if new_pos == self.current_position {
-            return Ok(new_pos);
-        }
 
-        if new_pos > self.current_position && new_pos - self.current_position <= 8 * 1024 {
-            let mut skip_buf = vec![0u8; (new_pos - self.current_position) as usize];
-            self.read_exact(&mut skip_buf)?;
-            return Ok(self.current_position);
-        }
-
-        unsafe {
-            if !self.file.is_null() {
-                zip_fclose(self.file);
-                self.file = std::ptr::null_mut();
+        // Check if file is seekable
+        match self.check_seekable() {
+            Ok(true) => self.fast_seek(pos),
+            Ok(false) => self.slow_seek(pos),
+            Err(e) => {
+                // If we can't determine seekability, fall back to slow seek
+                eprintln!("Warning: Could not determine file seekability, using slow seek: {}", e);
+                self.slow_seek(pos)
             }
-
-            if self.file_index >= 0 {
-                self.file = zip_fopen_index(self.archive, self.file_index as u64, 0);
-            } else if let Some(ref filename) = self.cached_filename {
-                self.file = zip_fopen(self.archive, filename.as_ptr(), 0);
-            } else {
-                // useless fallback
-                let payload_name = match CStr::from_bytes_with_nul(b"payload.bin\0") {
-                    Ok(name) => name,
-                    Err(_) => {
-                        return Err(io::Error::new(
-                            io::ErrorKind::Other,
-                            "Failed to create CStr for payload.bin",
-                        ));
-                    }
-                };
-                self.file = zip_fopen(self.archive, payload_name.as_ptr(), 0);
-            }
-
-            if self.file.is_null() {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Failed to reopen file for seeking",
-                ));
-            }
-
-            self.current_position = 0;
-
-            if new_pos > 0 {
-                if self.buffer.len() < self.buffer_size {
-                    self.buffer.resize(self.buffer_size, 0);
-                }
-
-                let mut remaining = new_pos;
-                while remaining > 0 {
-                    let to_read = remaining.min(self.buffer.len() as u64) as usize;
-                    let read_bytes =
-                        zip_fread(self.file, self.buffer.as_mut_ptr() as *mut c_void, to_read);
-                    if read_bytes <= 0 {
-                        return Err(io::Error::new(io::ErrorKind::Other, "Failed to seek"));
-                    }
-                    self.current_position += read_bytes as u64;
-                    remaining -= read_bytes as u64;
-
-                    if read_bytes < to_read as isize {
-                        break;
-                    }
-                }
-            }
-
-            Ok(self.current_position)
         }
     }
 }
