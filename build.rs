@@ -2,11 +2,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
    // let mut config = prost_build::Config::new();
   //  config.type_attribute(".", "#[derive(serde::Serialize)]");
  //   config.compile_protos(&["proto/update_metadata.proto"], &["proto/"])?;
+    
     let target = std::env::var("TARGET").unwrap_or_default();
     let is_android = target.contains("android");
     let is_musl = target.contains("musl");
     let is_windows = target.contains("windows");
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let use_static_libs = std::env::var("STATIC_LIBS").is_ok();
+    
+    if use_static_libs {
+        println!("cargo:warning=Using static linking for libraries");
+    }
+    
     if is_android {
         if target.contains("aarch64") {
             println!(
@@ -99,8 +106,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("cargo:warning=Building for Windows ARM64 architecture");
         }
     }
-    println!("cargo:rustc-link-lib=lzma");
-    println!("cargo:rustc-link-lib=zip");
-    println!("cargo:rustc-link-lib=z");
+    
+    if use_static_libs {
+        println!("cargo:rustc-link-lib=static=lzma");
+        println!("cargo:rustc-link-lib=static=zip");
+        println!("cargo:rustc-link-lib=static=z");
+    } else {
+        println!("cargo:rustc-link-lib=lzma");
+        println!("cargo:rustc-link-lib=zip");
+        println!("cargo:rustc-link-lib=z");
+    }
+    
     Ok(())
 }
