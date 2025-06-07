@@ -115,7 +115,7 @@ jobs:
       - name: Download and extract libzip
         run: |
           cd ${{ github.workspace }}/build/libzip
-          curl -L https://libzip.org/download/libzip-1.11.3.tar.xz -o libzip.tar.xz
+          curl -L https://libzip.org/download/libzip-1.11.4.tar.xz -o libzip.tar.xz
           tar -xf libzip.tar.xz --strip-components=1
 
       - name: Build libzip
