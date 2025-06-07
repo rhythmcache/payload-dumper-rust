@@ -183,9 +183,9 @@ jobs:
           export LIBDIR="${{ github.workspace }}/lib/android/${{ matrix.lib_dir }}"
           
           # Download and extract libzip
-          wget https://libzip.org/download/libzip-1.11.3.tar.xz
-          tar -xf libzip-1.11.3.tar.xz
-          cd libzip-1.11.3
+          wget https://libzip.org/download/libzip-1.11.4.tar.xz
+          tar -xf libzip-1.11.4.tar.xz
+          cd libzip-1.11.4
           mkdir build && cd build
           
           # Configure and build libzip with minimal features
