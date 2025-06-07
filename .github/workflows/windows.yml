@@ -186,9 +186,9 @@ jobs:
       - name: Build libzip
         run: |
           cd /tmp
-          wget https://libzip.org/download/libzip-1.11.3.tar.xz
-          tar -xf libzip-1.11.3.tar.xz
-          cd libzip-1.11.3
+          wget https://libzip.org/download/libzip-1.11.4.tar.xz
+          tar -xf libzip-1.11.4.tar.xz
+          cd libzip-1.11.4
           mkdir build && cd build
           
           # Create toolchain file for cross-compilation
