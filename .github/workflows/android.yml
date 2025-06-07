@@ -246,7 +246,7 @@ jobs:
             export CFLAGS_arm_linux_androideabi="-O3 -target armv7a-linux-androideabi21"
           fi
           
-          cargo build --release --target ${{ matrix.target }}
+          STATIC_LIBS=1 cargo build --release --target ${{ matrix.target }}
 
       - name: Verify binary
         run: |
