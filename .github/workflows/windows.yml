@@ -299,6 +299,7 @@ jobs:
         env:
           PKG_CONFIG_ALLOW_CROSS: 1
           PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
+          STATIC_LIBS: 1
 
       - name: Create Dir
         run: mkdir -p artifacts
