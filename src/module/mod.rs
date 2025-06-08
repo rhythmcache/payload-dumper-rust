@@ -8,5 +8,4 @@ pub mod payload_dumper;
 pub mod remote_zip;
 pub mod structs;
 pub mod utils;
-#[cfg(feature = "local_zip")]
 pub mod zip;
