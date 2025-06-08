@@ -20,7 +20,7 @@ use crate::module::structs::{
     PayloadMetadata, VabcFeatureSetInfo,
 };
 
-
+#[cfg(feature = "local_zip")]
 pub fn get_zip_error_message(error_code: i32) -> &'static str {
     match error_code {
         0 => "No error",
