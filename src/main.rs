@@ -6,5 +6,8 @@ impl<T: Read + Seek> ReadSeek for T {}
 include!("proto/update_metadata.rs");
 
 fn main() {
-    let _ = module::entry::run();
+    if let Err(e) = module::entry::run() {
+        eprintln!("Error: {}", e);
+        std::process::exit(1);
+    }
 }
