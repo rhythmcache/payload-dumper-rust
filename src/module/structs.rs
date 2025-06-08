@@ -17,9 +17,11 @@ pub struct Args {
     )]
     pub out: PathBuf,
 
+    #[cfg(feature = "differential_ota")]
     #[arg(long, help = "Enable differential OTA mode (requires --old)")]
     pub diff: bool,
 
+    #[cfg(feature = "differential_ota")]
     #[arg(
         long,
         default_value = "old",
@@ -38,6 +40,7 @@ pub struct Args {
     #[arg(long, help = "Number of threads to use for parallel processing")]
     pub threads: Option<usize>,
 
+    #[cfg(feature = "differential_ota")]
     #[arg(
         long,
         conflicts_with_all = &["diff", "old", "images", "threads"],
@@ -45,10 +48,27 @@ pub struct Args {
     )]
     pub list: bool,
 
+    #[cfg(not(feature = "differential_ota"))]
+    #[arg(
+        long,
+        conflicts_with_all = &["images", "threads"],
+        help = "List available partitions in the payload"
+    )]
+    pub list: bool,
+
+    #[cfg(feature = "differential_ota")]
     #[arg(
         long,
         help = "Save Complete Metadata as JSON ( use --out - to write to stdout)",
         conflicts_with_all = &["diff", "old", "images"]
+    )]
+    pub metadata: bool,
+
+    #[cfg(not(feature = "differential_ota"))]
+    #[arg(
+        long,
+        help = "Save Complete Metadata as JSON ( use --out - to write to stdout)",
+        conflicts_with_all = &["images"]
     )]
     pub metadata: bool,
 
@@ -58,6 +78,7 @@ pub struct Args {
     #[arg(long, help = "Skip hash verification")]
     pub no_verify: bool,
 }
+
 
 #[derive(Serialize)]
 pub struct PartitionMetadata {
