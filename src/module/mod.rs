@@ -1,5 +1,6 @@
 pub mod entry;
 pub mod http;
+#[cfg(feature = "differential_ota")]
 pub mod patch;
 pub mod payload_dumper;
 pub mod remote_zip;
