@@ -24,9 +24,12 @@ use crate::module::payload_dumper::{create_payload_reader, dump_partition};
 use crate::module::remote_zip::RemoteZipReader;
 use crate::module::structs::Args;
 use crate::module::utils::{
-    format_elapsed_time, format_size, get_zip_error_message, list_partitions, save_metadata,
+    format_elapsed_time, format_size, list_partitions, save_metadata,
     verify_partitions_hash,
 };
+#[cfg(feature = "local_zip")]
+use crate::module::utils::get_zip_error_message;
+#[cfg(feature = "local_zip")]
 use crate::module::zip::{LibZipReader, zip_close, zip_open};
 
 lazy_static! {
@@ -69,6 +72,15 @@ pub fn run() -> Result<()> {
     #[cfg(not(feature = "remote_ota"))]
     if payload_path_str.starts_with("http://") || payload_path_str.starts_with("https://") {
         return Err(anyhow!("Network-based payload dumping requires the 'remote_ota' feature to be enabled. Please recompile with --features remote_ota"));
+    }
+
+    // Check if it's a local ZIP file
+    let is_local_zip = !is_url && args.payload_path.extension().and_then(|e| e.to_str()) == Some("zip");
+    
+    // Validate local ZIP usage when feature is disabled
+    #[cfg(not(feature = "local_zip"))]
+    if is_local_zip {
+        return Err(anyhow!("Local ZIP file support requires the 'local_zip' feature to be enabled. Please recompile with --features local_zip"));
     }
     
     main_pb.set_message("Opening file...");
@@ -131,39 +143,47 @@ pub fn run() -> Result<()> {
             // This branch should never be reached due to earlier validation
             return Err(anyhow!("Internal error: URL processing attempted without remote_ota feature"));
         }
-    } else if args.payload_path.extension().and_then(|e| e.to_str()) == Some("zip") {
-        let path_str = args
-            .payload_path
-            .to_str()
-            .ok_or_else(|| anyhow!("Invalid path"))?;
+    } else if is_local_zip {
+        #[cfg(feature = "local_zip")]
+        {
+            let path_str = args
+                .payload_path
+                .to_str()
+                .ok_or_else(|| anyhow!("Invalid path"))?;
 
-        let normalized_path = path_str.replace('\\', "/");
+            let normalized_path = path_str.replace('\\', "/");
 
-        let c_path = match std::ffi::CString::new(normalized_path.clone()) {
-            Ok(p) => p,
-            Err(e) => {
-                return Err(anyhow!("Invalid path contains null bytes: {}", e));
+            let c_path = match std::ffi::CString::new(normalized_path.clone()) {
+                Ok(p) => p,
+                Err(e) => {
+                    return Err(anyhow!("Invalid path contains null bytes: {}", e));
+                }
+            };
+
+            let mut error = 0;
+            let archive = unsafe { zip_open(c_path.as_ptr(), 0, &mut error) };
+
+            if archive.is_null() {
+                let error_msg = get_zip_error_message(error);
+                return Err(anyhow!(
+                    "Failed to open ZIP file: {} ({})",
+                    error_msg,
+                    error
+                ));
             }
-        };
 
-        let mut error = 0;
-        let archive = unsafe { zip_open(c_path.as_ptr(), 0, &mut error) };
-
-        if archive.is_null() {
-            let error_msg = get_zip_error_message(error);
-            return Err(anyhow!(
-                "Failed to open ZIP file: {} ({})",
-                error_msg,
-                error
-            ));
+            match { LibZipReader::new(archive, path_str.to_string()) } {
+                Ok(reader) => Box::new(reader) as Box<dyn ReadSeek>,
+                Err(e) => {
+                    unsafe { zip_close(archive) };
+                    return Err(e);
+                }
+            }
         }
-
-        match { LibZipReader::new(archive, path_str.to_string()) } {
-            Ok(reader) => Box::new(reader) as Box<dyn ReadSeek>,
-            Err(e) => {
-                unsafe { zip_close(archive) };
-                return Err(e);
-            }
+        #[cfg(not(feature = "local_zip"))]
+        {
+            // This branch should never be reached due to earlier validation
+            return Err(anyhow!("Internal error: Local ZIP processing attempted without local_zip feature"));
         }
     } else {
         Box::new(File::open(&args.payload_path)?) as Box<dyn ReadSeek>
@@ -270,9 +290,7 @@ pub fn run() -> Result<()> {
         partitions_to_extract.len()
     ));
 
-    let use_parallel = ((!is_url
-        && (args.payload_path.extension().and_then(|e| e.to_str()) == Some("zip")
-            || args.payload_path.extension().and_then(|e| e.to_str()) == Some("bin")))
+    let use_parallel = ((!is_url && (is_local_zip || args.payload_path.extension().and_then(|e| e.to_str()) == Some("bin")))
         || is_url)
         && !args.no_parallel;
     main_pb.set_message(if use_parallel {
@@ -286,6 +304,7 @@ pub fn run() -> Result<()> {
     let mut failed_partitions = Vec::new();
 
     if use_parallel {
+        #[cfg(feature = "local_zip")]
         let payload_path = Arc::new(args.payload_path.to_str().unwrap_or_default().to_string());
         #[cfg(feature = "remote_ota")]
         let payload_url = Arc::new(if is_url {
@@ -315,10 +334,9 @@ pub fn run() -> Result<()> {
                                 std::thread::sleep(Duration::from_millis(delay));
                             }
 
-                            if !is_url
-                                && args.payload_path.extension().and_then(|e| e.to_str())
-                                    == Some("zip")
-                            {
+                            let needs_reader_limit = !is_url && is_local_zip;
+                            
+                            if needs_reader_limit {
                                 let current =
                                     active_readers.load(std::sync::atomic::Ordering::SeqCst);
                                 if current >= max_concurrent_readers {
@@ -342,16 +360,21 @@ pub fn run() -> Result<()> {
                                 {
                                     Err(anyhow!("Remote OTA feature not enabled"))
                                 }
-                            } else if args.payload_path.extension().and_then(|e| e.to_str())
-                                == Some("zip")
-                            {
-                                let result =
-                                    LibZipReader::new_for_parallel((*payload_path).clone())
-                                        .map(|reader| Box::new(reader) as Box<dyn ReadSeek>);
+                            } else if is_local_zip {
+                                #[cfg(feature = "local_zip")]
+                                {
+                                    let result =
+                                        LibZipReader::new_for_parallel((*payload_path).clone())
+                                            .map(|reader| Box::new(reader) as Box<dyn ReadSeek>);
 
-                                active_readers.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                                    active_readers.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
 
-                                result
+                                    result
+                                }
+                                #[cfg(not(feature = "local_zip"))]
+                                {
+                                    Err(anyhow!("Local ZIP feature not enabled"))
+                                }
                             } else {
                                 create_payload_reader(&args.payload_path)
                             };
