@@ -12,6 +12,7 @@ use crate::InstallOperation;
 pub use crate::PartitionUpdate;
 use crate::ReadSeek;
 use crate::install_operation;
+#[cfg(feature = "differential_ota")]
 use crate::module::patch::bspatch;
 use crate::module::structs::Args;
 use crate::module::utils::verify_hash;
@@ -23,7 +24,10 @@ pub fn process_operation(
     block_size: u64,
     payload_file: &mut (impl Read + Seek),
     out_file: &mut (impl Write + Seek),
+    #[cfg(feature = "differential_ota")]
     old_file: Option<&mut dyn ReadSeek>,
+    #[cfg(not(feature = "differential_ota"))]
+    _old_file: Option<&mut dyn ReadSeek>,
 ) -> Result<()> {
     payload_file.seek(SeekFrom::Start(data_offset + op.data_offset.unwrap_or(0)))?;
     let mut data = vec![0u8; op.data_length.unwrap_or(0) as usize];
@@ -32,7 +36,7 @@ pub fn process_operation(
     if let Some(expected_hash) = op.data_sha256_hash.as_deref() {
         if !verify_hash(&data, expected_hash) {
             println!(
-                "⚠️  Warning: Operation {} data hash mismatch.",
+                "  Warning: Operation {} data hash mismatch.",
                 operation_index
             );
             return Ok(());
@@ -45,7 +49,7 @@ pub fn process_operation(
                 Ok(mut decompressor) => {
                     if let Err(e) = decompressor.read_to_end(&mut decompressed) {
                         println!(
-                            "⚠️  Warning: Failed to decompress XZ in operation {}.  : {}",
+                            "  Warning: Failed to decompress XZ in operation {}.  : {}",
                             operation_index, e
                         );
                         return Ok(());
@@ -57,7 +61,7 @@ pub fn process_operation(
                 }
                 Err(e) => {
                     println!(
-                        "⚠️  Warning: Skipping operation {} due to XZ decompression error.  : {}",
+                        "  Warning: Skipping operation {} due to XZ decompression error.  : {}",
                         operation_index, e
                     );
                     return Ok(());
@@ -78,7 +82,7 @@ pub fn process_operation(
                         pos = end_pos;
                     } else {
                         println!(
-                            "⚠️  Warning: Skipping extent in operation {} due to insufficient decompressed data.",
+                            "  Warning: Skipping extent in operation {} due to insufficient decompressed data.",
                             operation_index
                         );
                         break;
@@ -87,7 +91,7 @@ pub fn process_operation(
             }
             Err(e) => {
                 println!(
-                    "⚠️  Warning: Skipping operation {} due to unknown Zstd format: {}",
+                    "  Warning: Skipping operation {} due to unknown Zstd format: {}",
                     operation_index, e
                 );
                 return Ok(());
@@ -105,7 +109,7 @@ pub fn process_operation(
                 }
                 Err(e) => {
                     println!(
-                        "⚠️  Warning: Skipping operation {} due to unknown BZ2 format.  : {}",
+                        " Warning: Skipping operation {} due to unknown BZ2 format.  : {}",
                         operation_index, e
                     );
                     return Ok(());
@@ -118,6 +122,7 @@ pub fn process_operation(
             ))?;
             out_file.write_all(&data)?;
         }
+        #[cfg(feature = "differential_ota")]
         install_operation::Type::SourceCopy => {
             let old_file = old_file
                 .ok_or_else(|| anyhow!("SOURCE_COPY supported only for differential OTA"))?;
@@ -131,6 +136,7 @@ pub fn process_operation(
                 out_file.write_all(&buffer)?;
             }
         }
+        #[cfg(feature = "differential_ota")]
         install_operation::Type::SourceBsdiff | install_operation::Type::BrotliBsdiff => {
             let old_file =
                 old_file.ok_or_else(|| anyhow!("BSDIFF supported only for differential OTA"))?;
@@ -146,7 +152,7 @@ pub fn process_operation(
                 Ok(new_data) => new_data,
                 Err(e) => {
                     println!(
-                        "⚠️  Warning: Skipping operation {} due to failed BSDIFF patch.  : {}",
+                        "  Warning: Skipping operation {} due to failed BSDIFF patch.  : {}",
                         operation_index, e
                     );
                     return Ok(());
@@ -162,7 +168,7 @@ pub fn process_operation(
                     pos = end_pos;
                 } else {
                     println!(
-                        "⚠️  Warning: Skipping operation {} due to insufficient patched data.  .",
+                        "  Warning: Skipping operation {} due to insufficient patched data.  .",
                         operation_index
                     );
                     return Ok(());
@@ -178,9 +184,18 @@ pub fn process_operation(
                 }
             }
         }
+        #[cfg(not(feature = "differential_ota"))]
+        install_operation::Type::SourceCopy | 
+        install_operation::Type::SourceBsdiff | 
+        install_operation::Type::BrotliBsdiff => {
+            return Err(anyhow!(
+                "Operation {} requires differential_ota feature to be enabled",
+                operation_index
+            ));
+        }
         _ => {
             println!(
-                "⚠️  Warning: Skipping operation {} due to unknown compression method",
+                "  Warning: Skipping operation {} due to unknown compression method",
                 operation_index
             );
             return Ok(());
@@ -230,6 +245,8 @@ pub fn dump_partition(
             }
         }
     }
+    
+    #[cfg(feature = "differential_ota")]
     let mut old_file = if args.diff {
         let old_path = args.old.join(format!("{}.img", partition_name));
         Some(
@@ -239,6 +256,10 @@ pub fn dump_partition(
     } else {
         None
     };
+    
+    #[cfg(not(feature = "differential_ota"))]
+    let mut old_file: Option<File> = None;
+    
     for (i, op) in partition.operations.iter().enumerate() {
         process_operation(
             i,
