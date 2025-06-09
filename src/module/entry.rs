@@ -1,3 +1,20 @@
+use crate::DeltaArchiveManifest;
+use crate::PartitionUpdate;
+use crate::ReadSeek;
+#[cfg(feature = "remote_ota")]
+use crate::module::http::HttpReader;
+use crate::module::payload_dumper::{create_payload_reader, dump_partition};
+#[cfg(feature = "remote_ota")]
+use crate::module::remote_zip::RemoteZipReader;
+use crate::module::structs::Args;
+#[cfg(feature = "local_zip")]
+use crate::module::utils::get_zip_error_message;
+use crate::module::utils::{
+    format_elapsed_time, format_size, is_differential_ota, list_partitions, save_metadata,
+    verify_partitions_hash,
+};
+#[cfg(feature = "local_zip")]
+use crate::module::zip::{LibZipReader, zip_close, zip_open};
 use anyhow::{Result, anyhow};
 use byteorder::{BigEndian, ReadBytesExt};
 use clap::Parser;
@@ -15,23 +32,6 @@ use std::sync::atomic::AtomicBool;
 #[cfg(feature = "remote_ota")]
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
-
-use crate::DeltaArchiveManifest;
-use crate::PartitionUpdate;
-use crate::ReadSeek;
-#[cfg(feature = "remote_ota")]
-use crate::module::http::HttpReader;
-use crate::module::payload_dumper::{create_payload_reader, dump_partition};
-#[cfg(feature = "remote_ota")]
-use crate::module::remote_zip::RemoteZipReader;
-use crate::module::structs::Args;
-#[cfg(feature = "local_zip")]
-use crate::module::utils::get_zip_error_message;
-use crate::module::utils::{
-    format_elapsed_time, format_size, list_partitions, save_metadata, verify_partitions_hash,
-};
-#[cfg(feature = "local_zip")]
-use crate::module::zip::{LibZipReader, zip_close, zip_open};
 
 #[cfg(feature = "remote_ota")]
 lazy_static! {
@@ -171,7 +171,6 @@ pub fn run() -> Result<()> {
                 }
             };
 
-
             let mut error = 0;
             let archive = unsafe { zip_open(c_path.as_ptr(), 0, &mut error) };
 
@@ -228,6 +227,25 @@ pub fn run() -> Result<()> {
     payload_reader.read_exact(&mut metadata_signature)?;
     let data_offset = payload_reader.stream_position()?;
     let manifest = DeltaArchiveManifest::decode(&manifest[..])?;
+
+    if is_differential_ota(&manifest) {
+        #[cfg(feature = "differential_ota")]
+        {
+            if !args.diff {
+                return Err(anyhow!(
+                    "This appears to be a differential OTA package. Use --diff argument and provide the original images directory with --old <path>"
+                ));
+            }
+        }
+
+        #[cfg(not(feature = "differential_ota"))]
+        {
+            return Err(anyhow!(
+                "Differential OTA is not supported in this build. Recompile with --features differential_ota"
+            ));
+        }
+    }
+
     if let Some(security_patch) = &manifest.security_patch_level {
         println!("- Security Patch: {}", security_patch);
     }
