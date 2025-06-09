@@ -2,6 +2,7 @@ use anyhow::{Result, anyhow};
 use byteorder::{BigEndian, ReadBytesExt};
 use clap::Parser;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+#[cfg(feature = "remote_ota")]
 use lazy_static::lazy_static;
 use prost::Message;
 use rayon::prelude::*;
@@ -9,6 +10,7 @@ use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
 use std::sync::Arc;
+#[cfg(feature = "remote_ota")]
 use std::sync::atomic::AtomicBool;
 #[cfg(feature = "remote_ota")]
 use std::sync::atomic::Ordering;
@@ -23,15 +25,15 @@ use crate::module::payload_dumper::{create_payload_reader, dump_partition};
 #[cfg(feature = "remote_ota")]
 use crate::module::remote_zip::RemoteZipReader;
 use crate::module::structs::Args;
-use crate::module::utils::{
-    format_elapsed_time, format_size, list_partitions, save_metadata,
-    verify_partitions_hash,
-};
 #[cfg(feature = "local_zip")]
 use crate::module::utils::get_zip_error_message;
+use crate::module::utils::{
+    format_elapsed_time, format_size, list_partitions, save_metadata, verify_partitions_hash,
+};
 #[cfg(feature = "local_zip")]
 use crate::module::zip::{LibZipReader, zip_close, zip_open};
 
+#[cfg(feature = "remote_ota")]
 lazy_static! {
     static ref FILE_SIZE_INFO_SHOWN: AtomicBool = AtomicBool::new(false);
 }
@@ -61,28 +63,34 @@ pub fn run() -> Result<()> {
     );
     main_pb.enable_steady_tick(Duration::from_millis(100));
     let payload_path_str = args.payload_path.to_string_lossy().to_string();
-    
+
     // Check if it's a URL - only available with remote_ota feature
     #[cfg(feature = "remote_ota")]
-    let is_url = payload_path_str.starts_with("http://") || payload_path_str.starts_with("https://");
+    let is_url =
+        payload_path_str.starts_with("http://") || payload_path_str.starts_with("https://");
     #[cfg(not(feature = "remote_ota"))]
     let is_url = false;
-    
+
     // Validate URL usage when feature is disabled
     #[cfg(not(feature = "remote_ota"))]
     if payload_path_str.starts_with("http://") || payload_path_str.starts_with("https://") {
-        return Err(anyhow!("Network-based payload dumping requires the 'remote_ota' feature to be enabled. Please recompile with --features remote_ota"));
+        return Err(anyhow!(
+            "Network-based payload dumping requires the 'remote_ota' feature to be enabled. Please recompile with --features remote_ota"
+        ));
     }
 
     // Check if it's a local ZIP file
-    let is_local_zip = !is_url && args.payload_path.extension().and_then(|e| e.to_str()) == Some("zip");
-    
+    let is_local_zip =
+        !is_url && args.payload_path.extension().and_then(|e| e.to_str()) == Some("zip");
+
     // Validate local ZIP usage when feature is disabled
     #[cfg(not(feature = "local_zip"))]
     if is_local_zip {
-        return Err(anyhow!("Local ZIP file support requires the 'local_zip' feature to be enabled. Please recompile with --features local_zip"));
+        return Err(anyhow!(
+            "Local ZIP file support requires the 'local_zip' feature to be enabled. Please recompile with --features local_zip"
+        ));
     }
-    
+
     main_pb.set_message("Opening file...");
 
     if !is_url {
@@ -109,7 +117,8 @@ pub fn run() -> Result<()> {
                 if let Ok(reader) = &http_reader {
                     let file_size = reader.content_length;
                     main_pb.set_message("Connection established");
-                    if file_size > 1024 * 1024 && !FILE_SIZE_INFO_SHOWN.swap(true, Ordering::SeqCst) {
+                    if file_size > 1024 * 1024 && !FILE_SIZE_INFO_SHOWN.swap(true, Ordering::SeqCst)
+                    {
                         println!("- Remote file size: {}", format_size(file_size));
                     }
                     reader.content_type.clone()
@@ -141,7 +150,9 @@ pub fn run() -> Result<()> {
         #[cfg(not(feature = "remote_ota"))]
         {
             // This branch should never be reached due to earlier validation
-            return Err(anyhow!("Internal error: URL processing attempted without remote_ota feature"));
+            return Err(anyhow!(
+                "Internal error: URL processing attempted without remote_ota feature"
+            ));
         }
     } else if is_local_zip {
         #[cfg(feature = "local_zip")]
@@ -151,14 +162,15 @@ pub fn run() -> Result<()> {
                 .to_str()
                 .ok_or_else(|| anyhow!("Invalid path"))?;
 
-            let normalized_path = path_str.replace('\\', "/");
+            // let normalized_path = path_str.replace('\\', "/");
 
-            let c_path = match std::ffi::CString::new(normalized_path.clone()) {
+            let c_path = match std::ffi::CString::new(path_str.to_string()) {
                 Ok(p) => p,
                 Err(e) => {
                     return Err(anyhow!("Invalid path contains null bytes: {}", e));
                 }
             };
+
 
             let mut error = 0;
             let archive = unsafe { zip_open(c_path.as_ptr(), 0, &mut error) };
@@ -183,12 +195,14 @@ pub fn run() -> Result<()> {
         #[cfg(not(feature = "local_zip"))]
         {
             // This branch should never be reached due to earlier validation
-            return Err(anyhow!("Internal error: Local ZIP processing attempted without local_zip feature"));
+            return Err(anyhow!(
+                "Internal error: Local ZIP processing attempted without local_zip feature"
+            ));
         }
     } else {
         Box::new(File::open(&args.payload_path)?) as Box<dyn ReadSeek>
     };
-    
+
     if args.out.to_string_lossy() != "-" {
         fs::create_dir_all(&args.out)?;
     }
@@ -290,7 +304,9 @@ pub fn run() -> Result<()> {
         partitions_to_extract.len()
     ));
 
-    let use_parallel = ((!is_url && (is_local_zip || args.payload_path.extension().and_then(|e| e.to_str()) == Some("bin")))
+    let use_parallel = ((!is_url
+        && (is_local_zip
+            || args.payload_path.extension().and_then(|e| e.to_str()) == Some("bin")))
         || is_url)
         && !args.no_parallel;
     main_pb.set_message(if use_parallel {
@@ -335,7 +351,7 @@ pub fn run() -> Result<()> {
                             }
 
                             let needs_reader_limit = !is_url && is_local_zip;
-                            
+
                             if needs_reader_limit {
                                 let current =
                                     active_readers.load(std::sync::atomic::Ordering::SeqCst);
@@ -367,7 +383,8 @@ pub fn run() -> Result<()> {
                                         LibZipReader::new_for_parallel((*payload_path).clone())
                                             .map(|reader| Box::new(reader) as Box<dyn ReadSeek>);
 
-                                    active_readers.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                                    active_readers
+                                        .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
 
                                     result
                                 }
