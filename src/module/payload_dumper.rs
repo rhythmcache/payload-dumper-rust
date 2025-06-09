@@ -204,6 +204,34 @@ pub fn process_operation(
     Ok(())
 }
 
+#[cfg(feature = "differential_ota")]
+fn verify_old_partition(old_file: &mut dyn ReadSeek, old_partition_info: &crate::PartitionInfo) -> Result<()> {
+    if let Some(expected_hash) = old_partition_info.hash.as_deref() {
+        if expected_hash.is_empty() {
+            return Ok(()); // No hash to verify
+        }
+        
+        old_file.seek(SeekFrom::Start(0))?;
+        let mut hasher = Sha256::new();
+        
+        
+        let mut buffer = vec![0u8; 1024 * 1024]; // 1MB buffer
+        loop {
+            let bytes_read = old_file.read(&mut buffer)?;
+            if bytes_read == 0 {
+                break;
+            }
+            hasher.update(&buffer[..bytes_read]);
+        }
+        
+        let computed_hash = hasher.finalize();
+        if computed_hash.as_slice() != expected_hash {
+            return Err(anyhow!("Old partition hash verification failed"));
+        }
+    }
+    Ok(())
+}
+
 pub fn dump_partition(
     partition: &PartitionUpdate,
     data_offset: u64,
@@ -249,10 +277,20 @@ pub fn dump_partition(
     #[cfg(feature = "differential_ota")]
     let mut old_file = if args.diff {
         let old_path = args.old.join(format!("{}.img", partition_name));
-        Some(
-            File::open(&old_path)
-                .with_context(|| format!("Failed to open original image: {:?}", old_path))?,
-        )
+        let mut file = File::open(&old_path)
+            .with_context(|| format!("Failed to open original image: {:?}", old_path))?;
+        
+        // Verify old partition hash if available
+        if let Some(old_partition_info) = &partition.old_partition_info {
+            if let Err(e) = verify_old_partition(&mut file, old_partition_info) {
+                return Err(anyhow!(
+                    "Old partition verification failed for {}: {}",
+                    partition_name, e
+                ));
+            }
+        }
+        
+        Some(file)
     } else {
         None
     };
