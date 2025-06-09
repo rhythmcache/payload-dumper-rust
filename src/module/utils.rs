@@ -59,6 +59,19 @@ pub fn get_zip_error_message(error_code: i32) -> &'static str {
     }
 }
 
+pub fn is_differential_ota(manifest: &DeltaArchiveManifest) -> bool {
+    manifest.partitions.iter().any(|partition| {
+        partition.operations.iter().any(|op| {
+            matches!(
+                op.r#type(),
+                install_operation::Type::SourceCopy
+                    | install_operation::Type::SourceBsdiff
+                    | install_operation::Type::BrotliBsdiff
+            )
+        })
+    })
+}
+
 pub fn verify_hash(data: &[u8], expected_hash: &[u8]) -> bool {
     if expected_hash.is_empty() {
         return true;
