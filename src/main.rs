@@ -7,7 +7,7 @@ include!("proto/update_metadata.rs");
 
 fn main() {
     if let Err(e) = module::entry::run() {
-        eprintln!("Error: {}", e);
+        eprintln!("- Error: {}", e);
         std::process::exit(1);
     }
 }
