@@ -1,3 +1,4 @@
+use crate::module::utils::format_size;
 use anyhow::{Result, anyhow};
 use lazy_static::lazy_static;
 use reqwest::{
@@ -5,12 +6,11 @@ use reqwest::{
     header,
 };
 use std::io::{self, Read, Seek, SeekFrom};
+#[cfg(feature = "hickory-dns")]
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use url;
-
-#[cfg(feature = "hickory-dns")]
-use std::sync::Arc;
 
 #[cfg(feature = "hickory-dns")]
 use once_cell::sync::Lazy;
@@ -147,8 +147,7 @@ impl HttpReader {
 
                     // Print file size info if requested
                     if print_size && !FILE_SIZE_INFO_SHOWN.swap(true, Ordering::SeqCst) {
-                        let size_mb = content_length as f64 / (1024.0 * 1024.0);
-                        eprintln!("- File size: {:.2} MB", size_mb);
+                        eprintln!("- File size: {}", format_size(content_length));
                     }
 
                     return Ok(Self {
