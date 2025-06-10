@@ -36,7 +36,7 @@ pub struct LibZipReader {
     buffer_size: usize,
     cached_filename: Option<std::ffi::CString>,
     file_index: i64,
-    is_seekable: Option<bool>, 
+    is_seekable: Option<bool>,
 }
 
 #[link(name = "zip")]
@@ -63,23 +63,21 @@ unsafe extern "C" {
     pub fn zip_fopen(archive: *mut c_void, name: *const c_char, flags: c_int) -> *mut c_void;
     pub fn zip_fseek(file: *mut c_void, offset: i64, whence: c_int) -> i8;
     pub fn zip_file_is_seekable(file: *mut c_void) -> c_int;
-    
-    
+
     pub fn zip_open_from_source(
         source: *mut c_void, // zip_source_t*
         flags: c_int,
         error: *mut zip_error_t,
     ) -> *mut c_void; // zip_t*
-    
+
     pub fn zip_source_free(source: *mut c_void); // zip_source_t*
-    
+
     pub fn zip_error_init(error: *mut zip_error_t);
-    
+
     pub fn zip_error_fini(error: *mut zip_error_t);
-    
+
     pub fn zip_error_code_zip(error: *const zip_error_t) -> c_int;
-    
-    
+
     #[cfg(target_os = "windows")]
     pub fn zip_source_win32w_create(
         fname: *const u16, // wchar_t* on Windows
@@ -87,7 +85,7 @@ unsafe extern "C" {
         len: i64,
         error: *mut zip_error_t,
     ) -> *mut c_void; // zip_source_t*
-    
+
     // Unix/Linux file source functions
     #[cfg(not(target_os = "windows"))]
     pub fn zip_source_file_create(
@@ -138,7 +136,6 @@ impl LibZipReader {
                 }
             }
 
-            
             if file.is_null() {
                 let num_entries = zip_get_num_entries(archive, 0);
 
@@ -213,7 +210,6 @@ impl LibZipReader {
             let mut error = zip_error_t::default();
             zip_error_init(&mut error);
 
-            
             let source = zip_source_win32w_create(
                 path_wide.as_ptr(),
                 0,  // start offset
@@ -232,12 +228,11 @@ impl LibZipReader {
                 ));
             }
 
-            
             let mut open_error = zip_error_t::default();
             zip_error_init(&mut open_error);
-            
+
             let archive = zip_open_from_source(source, 0, &mut open_error);
-            
+
             if archive.is_null() {
                 let error_code = zip_error_code_zip(&open_error);
                 let error_msg = get_zip_error_message(error_code);
@@ -254,7 +249,6 @@ impl LibZipReader {
             zip_error_fini(&mut error);
             zip_error_fini(&mut open_error);
 
-            
             match Self::new(archive, path) {
                 Ok(reader) => Ok(reader),
                 Err(e) => {
@@ -268,7 +262,6 @@ impl LibZipReader {
     #[cfg(not(target_os = "windows"))]
     pub fn new_for_parallel(path: String) -> Result<Self> {
         unsafe {
-            
             let c_path = match std::ffi::CString::new(path.clone()) {
                 Ok(p) => p,
                 Err(e) => {
@@ -279,7 +272,6 @@ impl LibZipReader {
             let mut error = zip_error_t::default();
             zip_error_init(&mut error);
 
-            
             let source = zip_source_file_create(
                 c_path.as_ptr(),
                 0,  // start offset
@@ -298,12 +290,11 @@ impl LibZipReader {
                 ));
             }
 
-            
             let mut open_error = zip_error_t::default();
             zip_error_init(&mut open_error);
-            
+
             let archive = zip_open_from_source(source, 0, &mut open_error);
-            
+
             if archive.is_null() {
                 let error_code = zip_error_code_zip(&open_error);
                 let error_msg = get_zip_error_message(error_code);
@@ -320,7 +311,6 @@ impl LibZipReader {
             zip_error_fini(&mut error);
             zip_error_fini(&mut open_error);
 
-            
             match Self::new(archive, path) {
                 Ok(reader) => Ok(reader),
                 Err(e) => {
@@ -331,7 +321,7 @@ impl LibZipReader {
         }
     }
 
-    // Check if the file is seekable 
+    // Check if the file is seekable
     fn check_seekable(&mut self) -> io::Result<bool> {
         if let Some(seekable) = self.is_seekable {
             return Ok(seekable);
@@ -339,10 +329,7 @@ impl LibZipReader {
 
         unsafe {
             if self.file.is_null() {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "File handle is null",
-                ));
+                return Err(io::Error::new(io::ErrorKind::Other, "File handle is null"));
             }
 
             let result = zip_file_is_seekable(self.file);
@@ -367,7 +354,6 @@ impl LibZipReader {
         }
     }
 
-    
     fn fast_seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         let new_pos = match pos {
             SeekFrom::Start(offset) => offset,
@@ -394,27 +380,20 @@ impl LibZipReader {
             ));
         }
 
-    
         let (offset, whence) = match pos {
             SeekFrom::Start(offset) => (offset as i64, 0), // SEEK_SET
-            SeekFrom::Current(offset) => (offset, 1), // SEEK_CUR
-            SeekFrom::End(offset) => (offset, 2), // SEEK_END
+            SeekFrom::Current(offset) => (offset, 1),      // SEEK_CUR
+            SeekFrom::End(offset) => (offset, 2),          // SEEK_END
         };
 
         unsafe {
             if self.file.is_null() {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "File handle is null",
-                ));
+                return Err(io::Error::new(io::ErrorKind::Other, "File handle is null"));
             }
 
             let result = zip_fseek(self.file, offset, whence);
             if result != 0 {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "zip_fseek failed",
-                ));
+                return Err(io::Error::new(io::ErrorKind::Other, "zip_fseek failed"));
             }
 
             self.current_position = new_pos;
@@ -422,7 +401,6 @@ impl LibZipReader {
         }
     }
 
-    
     fn slow_seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         let new_pos = match pos {
             SeekFrom::Start(offset) => offset,
@@ -625,14 +603,14 @@ impl Seek for LibZipReader {
                     }
                 }
             };
-            
+
             if new_pos > self.file_size {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     "Attempted to seek past end of file",
                 ));
             }
-            
+
             self.current_position = new_pos;
             return Ok(self.current_position);
         }
@@ -643,7 +621,10 @@ impl Seek for LibZipReader {
             Ok(false) => self.slow_seek(pos),
             Err(e) => {
                 // If we can't determine seekability, fall back to slow seek
-                eprintln!("Warning: Could not determine file seekability, using slow seek: {}", e);
+                eprintln!(
+                    "Warning: Could not determine file seekability, using slow seek: {}",
+                    e
+                );
                 self.slow_seek(pos)
             }
         }

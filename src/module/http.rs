@@ -144,13 +144,13 @@ impl HttpReader {
                             );
                         }
                     }
-                    
+
                     // Print file size info if requested
                     if print_size && !FILE_SIZE_INFO_SHOWN.swap(true, Ordering::SeqCst) {
                         let size_mb = content_length as f64 / (1024.0 * 1024.0);
                         eprintln!("- File size: {:.2} MB", size_mb);
                     }
-                    
+
                     return Ok(Self {
                         url,
                         position: 0,
@@ -178,13 +178,13 @@ impl HttpReader {
     }
 
     /*
-    
+
     pub fn supports_ranges(&self) -> bool {
         self.supports_ranges
     }
 
-    
-    
+
+
     fn read_range(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if self.position >= self.content_length {
             return Ok(0);
@@ -232,7 +232,7 @@ impl HttpReader {
                     retry_count += 1;
                     if retry_count == max_retries {
                         return Err(io::Error::new(
-                            io::ErrorKind::Other, 
+                            io::ErrorKind::Other,
                             format!("Failed to read range {} after {} retries: {}", range, max_retries, e)
                         ));
                     }
@@ -246,10 +246,9 @@ impl HttpReader {
             "Failed to read range after maximum retries",
         ))
     }
-    
+
     */
 
-    
     pub fn read_at(&self, offset: u64, buf: &mut [u8]) -> io::Result<usize> {
         if offset >= self.content_length {
             return Ok(0);
@@ -289,8 +288,11 @@ impl HttpReader {
                     retry_count += 1;
                     if retry_count == max_retries {
                         return Err(io::Error::new(
-                            io::ErrorKind::Other, 
-                            format!("Failed to read range {} after {} retries: {}", range, max_retries, e)
+                            io::ErrorKind::Other,
+                            format!(
+                                "Failed to read range {} after {} retries: {}",
+                                range, max_retries, e
+                            ),
                         ));
                     }
                     std::thread::sleep(Duration::from_secs(2 * retry_count as u64));
@@ -333,8 +335,7 @@ impl Seek for HttpReader {
                 }
             }
         };
-        
-        
+
         if new_pos > self.content_length {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -344,7 +345,7 @@ impl Seek for HttpReader {
                 ),
             ));
         }
-        
+
         self.position = new_pos;
         Ok(self.position)
     }
@@ -352,7 +353,7 @@ impl Seek for HttpReader {
 
 pub fn copy_from_response(response: &mut Response, buf: &mut [u8]) -> io::Result<usize> {
     let mut total_read = 0;
-    
+
     while total_read < buf.len() {
         match response.read(&mut buf[total_read..]) {
             Ok(0) => break, // EOF
@@ -361,6 +362,6 @@ pub fn copy_from_response(response: &mut Response, buf: &mut [u8]) -> io::Result
             Err(e) => return Err(e),
         }
     }
-    
+
     Ok(total_read)
 }

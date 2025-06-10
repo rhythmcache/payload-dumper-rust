@@ -1,18 +1,17 @@
 use crate::DeltaArchiveManifest;
 use crate::PartitionUpdate;
 use crate::ReadSeek;
+use crate::module::args::Args;
 #[cfg(feature = "remote_ota")]
 use crate::module::http::HttpReader;
 use crate::module::payload_dumper::{create_payload_reader, dump_partition};
 #[cfg(feature = "remote_ota")]
 use crate::module::remote_zip::RemoteZipReader;
-use crate::module::structs::Args;
 #[cfg(feature = "local_zip")]
 use crate::module::utils::get_zip_error_message;
-use crate::module::utils::{
-    format_elapsed_time, format_size, is_differential_ota, list_partitions, save_metadata,
-    verify_partitions_hash,
-};
+use crate::module::utils::{format_elapsed_time, format_size, is_differential_ota};
+use crate::module::metadata::{list_partitions, save_metadata};
+use crate::module::verify::verify_partitions_hash;
 #[cfg(feature = "local_zip")]
 use crate::module::zip::{LibZipReader, zip_close, zip_open};
 use anyhow::{Result, anyhow};
