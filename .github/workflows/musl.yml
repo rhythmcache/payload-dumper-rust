@@ -266,7 +266,7 @@ jobs:
             echo "PATH: $PATH"
             which ${{ env.CC }} || echo "Cross compiler not found in PATH"
           fi
-          cargo build --release --target ${{ env.TARGET }} --features hickory-dns
+          cargo build --release --target ${{ env.TARGET }} --all-features
         env:
           PKG_CONFIG_ALLOW_CROSS: 1
           PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
