@@ -68,6 +68,7 @@ pub struct HttpReader {
     pub content_length: u64,
     client: Client,
     pub content_type: Option<String>,
+    supports_ranges: bool,
 }
 
 impl Clone for HttpReader {
@@ -78,6 +79,7 @@ impl Clone for HttpReader {
             content_length: self.content_length,
             client: HTTP_CLIENT.clone(),
             content_type: self.content_type.clone(),
+            supports_ranges: self.supports_ranges,
         }
     }
 }
@@ -127,8 +129,15 @@ impl HttpReader {
                         .and_then(|v| v.parse::<u64>().ok())
                         .ok_or_else(|| anyhow!("Could not determine content length"))?;
 
-                    // Check if server supports Accept-Ranges header
-                    if !response.headers().contains_key(header::ACCEPT_RANGES) {
+                    // Check if server supports range requests
+                    let supports_ranges = response
+                        .headers()
+                        .get(header::ACCEPT_RANGES)
+                        .and_then(|v| v.to_str().ok())
+                        .map(|v| v == "bytes")
+                        .unwrap_or(false);
+
+                    if !supports_ranges {
                         if !ACCEPT_RANGES_WARNING_SHOWN.swap(true, Ordering::SeqCst) {
                             eprintln!(
                                 "- Warning: Server doesn't advertise Accept-Ranges. The process may fail."
@@ -148,6 +157,7 @@ impl HttpReader {
                         content_length,
                         client,
                         content_type,
+                        supports_ranges,
                     });
                 }
                 Err(e) => {
@@ -167,21 +177,31 @@ impl HttpReader {
         ))
     }
 
+    /*
+    
+    pub fn supports_ranges(&self) -> bool {
+        self.supports_ranges
+    }
+
+    
+    
     fn read_range(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if self.position >= self.content_length {
             return Ok(0);
         }
 
         let start = self.position;
-        let end = std::cmp::min(start + buf.len() as u64 - 1, self.content_length - 1);
-        let to_read = (end - start + 1) as usize;
+        let remaining = self.content_length - start;
+        let to_read = std::cmp::min(buf.len() as u64, remaining) as usize;
 
         if to_read == 0 {
             return Ok(0);
         }
 
+        // Use a reasonable chunk size, but don't exceed buffer size
         let chunk_size = std::cmp::min(to_read, 4 * 1024 * 1024);
-        let range = format!("bytes={}-{}", start, start + chunk_size as u64 - 1);
+        let end = start + chunk_size as u64 - 1;
+        let range = format!("bytes={}-{}", start, end);
 
         let mut retry_count = 0;
         let max_retries = 3;
@@ -195,30 +215,83 @@ impl HttpReader {
 
             match request.send() {
                 Ok(mut response) => {
-                    if !response.status().is_success() {
+                    // Check for success or partial content (206)
+                    if !response.status().is_success() && response.status().as_u16() != 206 {
                         return Err(io::Error::new(
                             io::ErrorKind::Other,
-                            format!("Failed to access URL range: {}", response.status()),
+                            format!("HTTP error: {} for range {}", response.status(), range),
                         ));
                     }
 
-                    let mut bytes_read = 0;
-                    while bytes_read < to_read {
-                        match copy_from_response(&mut response, &mut buf[bytes_read..to_read]) {
-                            Ok(0) => break,
-                            Ok(n) => bytes_read += n,
-                            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-                            Err(e) => return Err(e),
-                        }
-                    }
-
+                    // Read the actual response data
+                    let bytes_read = copy_from_response(&mut response, &mut buf[..chunk_size])?;
                     self.position += bytes_read as u64;
                     return Ok(bytes_read);
                 }
                 Err(e) => {
                     retry_count += 1;
                     if retry_count == max_retries {
-                        return Err(io::Error::new(io::ErrorKind::Other, e.to_string()));
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other, 
+                            format!("Failed to read range {} after {} retries: {}", range, max_retries, e)
+                        ));
+                    }
+                    std::thread::sleep(Duration::from_secs(2 * retry_count as u64));
+                }
+            }
+        }
+
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            "Failed to read range after maximum retries",
+        ))
+    }
+    
+    */
+
+    
+    pub fn read_at(&self, offset: u64, buf: &mut [u8]) -> io::Result<usize> {
+        if offset >= self.content_length {
+            return Ok(0);
+        }
+
+        let remaining = self.content_length - offset;
+        let to_read = std::cmp::min(buf.len() as u64, remaining) as usize;
+
+        if to_read == 0 {
+            return Ok(0);
+        }
+
+        let end = offset + to_read as u64 - 1;
+        let range = format!("bytes={}-{}", offset, end);
+
+        let mut retry_count = 0;
+        let max_retries = 3;
+
+        while retry_count < max_retries {
+            match self
+                .client
+                .get(&self.url)
+                .header(header::RANGE, range.clone())
+                .send()
+            {
+                Ok(mut response) => {
+                    if !response.status().is_success() && response.status().as_u16() != 206 {
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            format!("HTTP error: {} for range {}", response.status(), range),
+                        ));
+                    }
+
+                    return copy_from_response(&mut response, &mut buf[..to_read]);
+                }
+                Err(e) => {
+                    retry_count += 1;
+                    if retry_count == max_retries {
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other, 
+                            format!("Failed to read range {} after {} retries: {}", range, max_retries, e)
+                        ));
                     }
                     std::thread::sleep(Duration::from_secs(2 * retry_count as u64));
                 }
@@ -234,7 +307,10 @@ impl HttpReader {
 
 impl Read for HttpReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.read_range(buf)
+        // Use read_at with current position instead of read_range
+        let bytes_read = self.read_at(self.position, buf)?;
+        self.position += bytes_read as u64;
+        Ok(bytes_read)
     }
 }
 
@@ -246,41 +322,45 @@ impl Seek for HttpReader {
                 if offset >= 0 {
                     self.position.saturating_add(offset as u64)
                 } else {
-                    self.position.saturating_sub(offset.abs() as u64)
+                    self.position.saturating_sub(offset.unsigned_abs())
                 }
             }
             SeekFrom::End(offset) => {
                 if offset >= 0 {
                     self.content_length.saturating_add(offset as u64)
                 } else {
-                    self.content_length.saturating_sub(offset.abs() as u64)
+                    self.content_length.saturating_sub(offset.unsigned_abs())
                 }
             }
         };
+        
+        
         if new_pos > self.content_length {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "Attempted to seek past end of file",
+                format!(
+                    "Seek position {} exceeds content length {}",
+                    new_pos, self.content_length
+                ),
             ));
         }
+        
         self.position = new_pos;
         Ok(self.position)
     }
 }
 
 pub fn copy_from_response(response: &mut Response, buf: &mut [u8]) -> io::Result<usize> {
-    use std::io::Read;
-    let mut reader = response.by_ref().take(buf.len() as u64);
-    let mut bytes_read = 0;
-
-    while bytes_read < buf.len() {
-        match reader.read(&mut buf[bytes_read..]) {
-            Ok(0) => break,
-            Ok(n) => bytes_read += n,
+    let mut total_read = 0;
+    
+    while total_read < buf.len() {
+        match response.read(&mut buf[total_read..]) {
+            Ok(0) => break, // EOF
+            Ok(n) => total_read += n,
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
             Err(e) => return Err(e),
         }
     }
-
-    Ok(bytes_read)
+    
+    Ok(total_read)
 }
