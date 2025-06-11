@@ -15,10 +15,9 @@ use crate::install_operation;
 use crate::module::args::Args;
 #[cfg(feature = "differential_ota")]
 use crate::module::patch::bspatch;
+use crate::module::verify::verify_hash;
 #[cfg(feature = "differential_ota")]
 use crate::module::verify::verify_old_partition;
-use crate::module::verify::verify_hash;
-
 
 pub fn process_operation(
     operation_index: usize,
@@ -204,7 +203,6 @@ pub fn process_operation(
     }
     Ok(())
 }
-
 
 pub fn dump_partition(
     partition: &PartitionUpdate,

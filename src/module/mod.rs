@@ -2,12 +2,14 @@ pub mod args;
 pub mod entry;
 #[cfg(feature = "remote_ota")]
 pub mod http;
+#[cfg(feature = "metadata")]
 pub mod metadata;
 #[cfg(feature = "differential_ota")]
 pub mod patch;
 pub mod payload_dumper;
 #[cfg(feature = "remote_ota")]
 pub mod remote_zip;
+#[cfg(feature = "metadata")]
 pub mod structs;
 pub mod utils;
 pub mod verify;

@@ -1,6 +1,10 @@
 use crate::PartitionUpdate;
+#[cfg(feature = "differential_ota")]
+use crate::ReadSeek;
 use crate::module::args::Args;
 use crate::module::utils::format_size;
+#[cfg(feature = "differential_ota")]
+use anyhow::anyhow;
 use anyhow::{Context, Result};
 use digest::Digest;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
@@ -8,15 +12,10 @@ use rayon::prelude::*;
 use sha2::Sha256;
 use std::fs::File;
 use std::io::Read;
-use std::path::PathBuf;
-use std::time::Duration;
-#[cfg(feature = "differential_ota")]
-use anyhow::anyhow;
-#[cfg(feature = "differential_ota")]
-use crate::ReadSeek;
 #[cfg(feature = "differential_ota")]
 use std::io::SeekFrom;
-
+use std::path::PathBuf;
+use std::time::Duration;
 
 pub fn verify_hash(data: &[u8], expected_hash: &[u8]) -> bool {
     if expected_hash.is_empty() {
@@ -210,7 +209,6 @@ pub fn verify_partition_hash(
         Ok(true)
     }
 }
-
 
 #[cfg(feature = "differential_ota")]
 pub fn verify_old_partition(

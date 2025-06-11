@@ -4,13 +4,15 @@ use crate::ReadSeek;
 use crate::module::args::Args;
 #[cfg(feature = "remote_ota")]
 use crate::module::http::HttpReader;
+#[cfg(feature = "metadata")]
+use crate::module::metadata::save_metadata;
 use crate::module::payload_dumper::{create_payload_reader, dump_partition};
 #[cfg(feature = "remote_ota")]
 use crate::module::remote_zip::RemoteZipReader;
 #[cfg(feature = "local_zip")]
 use crate::module::utils::get_zip_error_message;
+use crate::module::utils::list_partitions;
 use crate::module::utils::{format_elapsed_time, format_size, is_differential_ota};
-use crate::module::metadata::{list_partitions, save_metadata};
 use crate::module::verify::verify_partitions_hash;
 #[cfg(feature = "local_zip")]
 use crate::module::zip::{LibZipReader, zip_close, zip_open};
@@ -39,6 +41,15 @@ lazy_static! {
 
 pub fn run() -> Result<()> {
     let args = Args::parse();
+
+    // Validate metadata feature usage
+    #[cfg(not(feature = "metadata"))]
+    if args.metadata {
+        return Err(anyhow!(
+            "Metadata functionality requires the 'metadata' feature to be enabled. Please recompile with --features metadata"
+        ));
+    }
+
     let thread_count = if args.no_parallel {
         1
     } else if let Some(threads) = args.threads {
@@ -248,6 +259,8 @@ pub fn run() -> Result<()> {
     if let Some(security_patch) = &manifest.security_patch_level {
         println!("- Security Patch: {}", security_patch);
     }
+
+    #[cfg(feature = "metadata")]
     if args.metadata && !args.list {
         main_pb.set_message("Extracting metadata...");
         let is_stdout = args.out.to_string_lossy() == "-";
@@ -271,9 +284,12 @@ pub fn run() -> Result<()> {
             }
         }
     }
+
     if args.list {
         main_pb.finish_and_clear();
         multi_progress.clear()?;
+
+        #[cfg(feature = "metadata")]
         if args.metadata {
             let is_stdout = args.out.to_string_lossy() == "-";
 

@@ -54,11 +54,13 @@ pub struct Args {
     )]
     pub list: bool,
 
+    
     #[cfg(feature = "differential_ota")]
     #[arg(
         long,
         help = "Save Complete Metadata as JSON ( use --out - to write to stdout)",
-        conflicts_with_all = &["diff", "old", "images"]
+        conflicts_with_all = &["diff", "old", "images"],
+        hide = cfg!(not(feature = "metadata"))
     )]
     pub metadata: bool,
 
@@ -66,7 +68,8 @@ pub struct Args {
     #[arg(
         long,
         help = "Save Complete Metadata as JSON ( use --out - to write to stdout)",
-        conflicts_with_all = &["images"]
+        conflicts_with_all = &["images"],
+        hide = cfg!(not(feature = "metadata"))
     )]
     pub metadata: bool,
 

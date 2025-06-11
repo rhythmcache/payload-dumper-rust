@@ -28,9 +28,11 @@ zstd = "0.13.3"
 num_cpus = "1.17.0"
 rand = "0.9.1"
 hex = "0.4.3"
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.140"
 
+
+
+serde = { version = "1.0.219", features = ["derive"], optional = true }
+serde_json = { version = "1.0.140", optional = true }
 
 bsdiff = { version = "0.2.1", optional = true }
 
@@ -49,13 +51,15 @@ winapi = { version = "0.3", optional = true, features = ["winbase", "stringapise
 
 
 [features]
-default = ["local_zip", "remote_ota"]
+default = ["local_zip", "remote_ota", "metadata"]
 remote_ota = ["dep:url", "dep:reqwest", "dep:webpki-roots", "dep:tokio", "dep:lazy_static"]
 hickory-dns = ["remote_ota", "dep:once_cell", "dep:reqwest-hickory-resolver"]
 differential_ota = ["dep:bsdiff"]
 local_zip = ["dep:winapi"]
+metadata= ["dep:serde", "dep:serde_json"]
 
 [build-dependencies]
+# prost-build = "0.13.5"
 cc = "1.0.83"
 
 [profile.release]

@@ -1,17 +1,13 @@
 use crate::DeltaArchiveManifest;
-use crate::ReadSeek;
 use crate::install_operation;
 use crate::module::structs::{
     ApexInfoMetadata, DynamicPartitionGroupInfo, DynamicPartitionInfo, PartitionMetadata,
     PayloadMetadata, VabcFeatureSetInfo,
 };
 use crate::module::utils::format_size;
-use anyhow::{Result, anyhow};
-use byteorder::{BigEndian, ReadBytesExt};
-use prost::Message;
+use anyhow::Result;
 use serde_json;
 use std::fs;
-use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
 
 pub fn save_metadata(
@@ -139,66 +135,4 @@ pub fn save_metadata(
     fs::write(metadata_path, &json)?;
 
     Ok(json)
-}
-
-pub fn list_partitions(payload_reader: &mut Box<dyn ReadSeek>) -> Result<()> {
-    let mut magic = [0u8; 4];
-    payload_reader.read_exact(&mut magic)?;
-    if magic != *b"CrAU" {
-        payload_reader.seek(SeekFrom::Start(0))?;
-        let mut buffer = [0u8; 1024];
-        let mut offset = 0;
-        while offset < 1024 * 1024 {
-            let bytes_read = payload_reader.read(&mut buffer)?;
-            if bytes_read == 0 {
-                break;
-            }
-            for i in 0..bytes_read - 3 {
-                if buffer[i] == b'C'
-                    && buffer[i + 1] == b'r'
-                    && buffer[i + 2] == b'A'
-                    && buffer[i + 3] == b'U'
-                {
-                    payload_reader.seek(SeekFrom::Start(offset + i as u64))?;
-                    return list_partitions(payload_reader);
-                }
-            }
-            offset += bytes_read as u64;
-        }
-        return Err(anyhow!("Invalid payload file: magic 'CrAU' not found"));
-    }
-
-    let file_format_version = payload_reader.read_u64::<BigEndian>()?;
-    if file_format_version != 2 {
-        return Err(anyhow!(
-            "Unsupported payload version: {}",
-            file_format_version
-        ));
-    }
-    let manifest_size = payload_reader.read_u64::<BigEndian>()?;
-    let _metadata_signature_size = payload_reader.read_u32::<BigEndian>()?;
-
-    let mut manifest = vec![0u8; manifest_size as usize];
-    payload_reader.read_exact(&mut manifest)?;
-    let manifest = DeltaArchiveManifest::decode(&manifest[..])?;
-
-    println!("{:<20} {:<15}", "Partition Name", "Size");
-    println!("{}", "-".repeat(35));
-    for partition in &manifest.partitions {
-        let size = partition
-            .new_partition_info
-            .as_ref()
-            .and_then(|info| info.size)
-            .unwrap_or(0);
-        println!(
-            "{:<20} {:<15}",
-            partition.partition_name,
-            if size > 0 {
-                format_size(size)
-            } else {
-                "Unknown".to_string()
-            }
-        );
-    }
-    Ok(())
 }
