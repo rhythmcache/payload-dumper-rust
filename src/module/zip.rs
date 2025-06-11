@@ -1,15 +1,9 @@
+use crate::module::utils::{get_zip_error_message, handle_path};
 use anyhow::{Result, anyhow};
 use memmap2::Mmap;
 use std::ffi::CStr;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::os::raw::{c_char, c_int, c_void};
-
-#[cfg(target_os = "windows")]
-use std::os::windows::ffi::OsStrExt;
-#[cfg(target_os = "windows")]
-use std::path::Path;
-
-use crate::module::utils::get_zip_error_message;
 
 #[repr(C)]
 pub struct zip_stat_t {
@@ -63,37 +57,6 @@ unsafe extern "C" {
     pub fn zip_fopen(archive: *mut c_void, name: *const c_char, flags: c_int) -> *mut c_void;
     pub fn zip_fseek(file: *mut c_void, offset: i64, whence: c_int) -> i8;
     pub fn zip_file_is_seekable(file: *mut c_void) -> c_int;
-
-    pub fn zip_open_from_source(
-        source: *mut c_void, // zip_source_t*
-        flags: c_int,
-        error: *mut zip_error_t,
-    ) -> *mut c_void; // zip_t*
-
-    pub fn zip_source_free(source: *mut c_void); // zip_source_t*
-
-    pub fn zip_error_init(error: *mut zip_error_t);
-
-    pub fn zip_error_fini(error: *mut zip_error_t);
-
-    pub fn zip_error_code_zip(error: *const zip_error_t) -> c_int;
-
-    #[cfg(target_os = "windows")]
-    pub fn zip_source_win32w_create(
-        fname: *const u16, // wchar_t* on Windows
-        start: u64,
-        len: i64,
-        error: *mut zip_error_t,
-    ) -> *mut c_void; // zip_source_t*
-
-    // Unix/Linux file source functions
-    #[cfg(not(target_os = "windows"))]
-    pub fn zip_source_file_create(
-        fname: *const c_char,
-        start: u64,
-        len: i64,
-        error: *mut zip_error_t,
-    ) -> *mut c_void; // zip_source_t*
 }
 
 impl Default for zip_stat_t {
@@ -198,118 +161,28 @@ impl LibZipReader {
         }
     }
 
-    #[cfg(target_os = "windows")]
     pub fn new_for_parallel(path: String) -> Result<Self> {
         unsafe {
-            let path_wide: Vec<u16> = Path::new(&path)
-                .as_os_str()
-                .encode_wide()
-                .chain(std::iter::once(0)) // null terminate
-                .collect();
+            let normalized_path = handle_path(&path)?;
 
-            let mut error = zip_error_t::default();
-            zip_error_init(&mut error);
-
-            let source = zip_source_win32w_create(
-                path_wide.as_ptr(),
-                0,  // start offset
-                -1, // read entire file
-                &mut error,
-            );
-
-            if source.is_null() {
-                zip_error_fini(&mut error);
-                let error_code = zip_error_code_zip(&error);
-                let error_msg = get_zip_error_message(error_code);
-                return Err(anyhow!(
-                    "Failed to create Windows Unicode source for ZIP file: {} ({})",
-                    error_msg,
-                    error_code
-                ));
-            }
-
-            let mut open_error = zip_error_t::default();
-            zip_error_init(&mut open_error);
-
-            let archive = zip_open_from_source(source, 0, &mut open_error);
-
-            if archive.is_null() {
-                let error_code = zip_error_code_zip(&open_error);
-                let error_msg = get_zip_error_message(error_code);
-                zip_source_free(source);
-                zip_error_fini(&mut error);
-                zip_error_fini(&mut open_error);
-                return Err(anyhow!(
-                    "Failed to open ZIP file from Windows Unicode source: {} ({})",
-                    error_msg,
-                    error_code
-                ));
-            }
-
-            zip_error_fini(&mut error);
-            zip_error_fini(&mut open_error);
-
-            match Self::new(archive, path) {
-                Ok(reader) => Ok(reader),
-                Err(e) => {
-                    zip_close(archive);
-                    Err(e)
-                }
-            }
-        }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    pub fn new_for_parallel(path: String) -> Result<Self> {
-        unsafe {
-            let c_path = match std::ffi::CString::new(path.clone()) {
+            let c_path = match std::ffi::CString::new(normalized_path.clone()) {
                 Ok(p) => p,
                 Err(e) => {
                     return Err(anyhow!("Invalid path contains null bytes: {}", e));
                 }
             };
 
-            let mut error = zip_error_t::default();
-            zip_error_init(&mut error);
-
-            let source = zip_source_file_create(
-                c_path.as_ptr(),
-                0,  // start offset
-                -1, // read entire file
-                &mut error,
-            );
-
-            if source.is_null() {
-                zip_error_fini(&mut error);
-                let error_code = zip_error_code_zip(&error);
-                let error_msg = get_zip_error_message(error_code);
-                return Err(anyhow!(
-                    "Failed to create file source for ZIP file: {} ({})",
-                    error_msg,
-                    error_code
-                ));
-            }
-
-            let mut open_error = zip_error_t::default();
-            zip_error_init(&mut open_error);
-
-            let archive = zip_open_from_source(source, 0, &mut open_error);
+            let mut error_code: c_int = 0;
+            let archive = zip_open(c_path.as_ptr(), 0, &mut error_code);
 
             if archive.is_null() {
-                let error_code = zip_error_code_zip(&open_error);
                 let error_msg = get_zip_error_message(error_code);
-                zip_source_free(source);
-                zip_error_fini(&mut error);
-                zip_error_fini(&mut open_error);
                 return Err(anyhow!(
-                    "Failed to open ZIP file from file source: {} ({})",
+                    "Failed to open ZIP file: {} (error code: {})",
                     error_msg,
                     error_code
                 ));
             }
-
-            zip_error_fini(&mut error);
-            zip_error_fini(&mut open_error);
 
             match Self::new(archive, path) {
                 Ok(reader) => Ok(reader),
@@ -584,7 +457,6 @@ impl Read for LibZipReader {
 
 impl Seek for LibZipReader {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-        // Handle memory-mapped files first
         if self.mmap.is_some() {
             let new_pos = match pos {
                 SeekFrom::Start(offset) => offset,
