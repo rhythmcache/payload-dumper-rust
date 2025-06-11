@@ -1,6 +1,6 @@
 [package]
 name = "payload_dumper"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 authors = ["rhythmcache"]
 description = "Rust-based CLI utility to extract Android OTA payload.bin"
