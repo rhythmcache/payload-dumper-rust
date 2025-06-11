@@ -1,6 +1,24 @@
 use crate::DeltaArchiveManifest;
 use crate::install_operation;
+#[cfg(feature = "local_zip")]
+use anyhow::Result;
+#[cfg(all(windows, feature = "local_zip"))]
+use std::ffi::OsStr;
+#[cfg(all(windows, feature = "local_zip"))]
+use std::os::windows::ffi::OsStrExt;
 use std::time::Duration;
+
+#[cfg(all(windows, feature = "local_zip"))]
+pub fn handle_path(path: &str) -> Result<String> {
+    let wide: Vec<u16> = OsStr::new(path).encode_wide().chain(Some(0)).collect();
+    let utf8_path = String::from_utf16_lossy(&wide[..wide.len() - 1]);
+    Ok(utf8_path.replace('\\', "/"))
+}
+
+#[cfg(all(not(windows), feature = "local_zip"))]
+pub fn handle_path(path: &str) -> Result<String> {
+    Ok(path.to_string())
+}
 
 #[cfg(feature = "local_zip")]
 pub fn get_zip_error_message(error_code: i32) -> &'static str {
