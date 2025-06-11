@@ -42,15 +42,20 @@ tokio = { version = "1.45.1", features = ["rt", "rt-multi-thread", "io-util", "t
 reqwest-hickory-resolver = { version = "0.2.0", optional = true }
 url = { version = "2.5.4", optional = true }
 
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", optional = true, features = ["winbase", "stringapiset", "winnls"] }
+
+
+
 [features]
 default = ["local_zip", "remote_ota"]
 remote_ota = ["dep:url", "dep:reqwest", "dep:webpki-roots", "dep:tokio", "dep:lazy_static"]
 hickory-dns = ["remote_ota", "dep:once_cell", "dep:reqwest-hickory-resolver"]
 differential_ota = ["dep:bsdiff"]
-local_zip = []
+local_zip = ["dep:winapi"]
 
 [build-dependencies]
-# prost-build = "0.13.5"
 cc = "1.0.83"
 
 [profile.release]
