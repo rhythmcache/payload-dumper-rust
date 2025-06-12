@@ -282,7 +282,7 @@ jobs:
           
       - name: Prepare Magisk module
         run: |
-          
+          mkdir -p module/uncommon
           cp binaries/payload_dumper-arm64-v8a/payload_dumper module/uncommon/payload_dumper-arm64-v8a
           cp binaries/payload_dumper-armeabi-v7a/payload_dumper module/uncommon/payload_dumper-armeabi-v7a
           cp binaries/payload_dumper-x86/payload_dumper module/uncommon/payload_dumper-x86
