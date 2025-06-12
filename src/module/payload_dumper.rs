@@ -11,14 +11,14 @@ use crate::module::verify::verify_old_partition;
 use anyhow::{Context, Result, anyhow};
 use bzip2::read::BzDecoder;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-#[cfg(feature = "rust-lzma")]
+#[cfg(not(feature = "xz4rust"))]
 use lzma::LzmaReader;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::time::Duration;
-#[cfg(not(feature = "rust-lzma"))]
+#[cfg(feature = "xz4rust")]
 use xz4rust::{XzDecoder, XzNextBlockResult};
 
 pub fn process_operation(
@@ -45,7 +45,7 @@ pub fn process_operation(
         }
     }
     match op.r#type() {
-        #[cfg(feature = "rust-lzma")]
+        #[cfg(not(feature = "xz4rust"))]
         install_operation::Type::ReplaceXz => {
             let mut decompressed = Vec::new();
             match LzmaReader::new_decompressor(Cursor::new(&data)) {
@@ -71,7 +71,7 @@ pub fn process_operation(
                 }
             }
         }
-        #[cfg(not(feature = "rust-lzma"))]
+        #[cfg(feature = "xz4rust")]
         install_operation::Type::ReplaceXz => {
             let mut decompressed = Vec::new();
             let mut decoder = XzDecoder::in_heap_with_alloc_dict_size(
