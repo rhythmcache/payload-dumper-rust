@@ -256,7 +256,7 @@ jobs:
       - name: Upload binary as individual artifact
         uses: actions/upload-artifact@v4
         with:
-          name: payload_dumper-${{ matrix.android_abi }}
+          name: payload_dumper-android-${{ matrix.android_abi }}
           path: target/${{ matrix.target }}/release/payload_dumper
           if-no-files-found: error
 
