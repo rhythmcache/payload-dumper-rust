@@ -283,10 +283,10 @@ jobs:
       - name: Prepare Magisk module
         run: |
           mkdir -p module/uncommon
-          cp binaries/payload_dumper-arm64-v8a/payload_dumper module/uncommon/payload_dumper-arm64-v8a
-          cp binaries/payload_dumper-armeabi-v7a/payload_dumper module/uncommon/payload_dumper-armeabi-v7a
-          cp binaries/payload_dumper-x86/payload_dumper module/uncommon/payload_dumper-x86
-          cp binaries/payload_dumper-x86_64/payload_dumper module/uncommon/payload_dumper-x86_64
+          cp binaries/payload_dumper-android-arm64-v8a/payload_dumper module/uncommon/payload_dumper-arm64-v8a
+          cp binaries/payload_dumper-android-armeabi-v7a/payload_dumper module/uncommon/payload_dumper-armeabi-v7a
+          cp binaries/payload_dumper-android-x86/payload_dumper module/uncommon/payload_dumper-x86
+          cp binaries/payload_dumper-android-x86_64/payload_dumper module/uncommon/payload_dumper-x86_64
           
           # Set executable permissions
           chmod +x module/uncommon/payload_dumper-*
