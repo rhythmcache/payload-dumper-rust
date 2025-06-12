@@ -27,13 +27,12 @@ zstd = "0.13.3"
 num_cpus = "1.17.0"
 rand = "0.9.1"
 hex = "0.4.3"
-
+xz4rust = "0.2.1"
 
 
 serde = { version = "1.0.219", features = ["derive"], optional = true }
 serde_json = { version = "1.0.140", optional = true }
 
-xz4rust = { version = "0.2.1", optional = true }
 bsdiff = { version = "0.2.1", optional = true }
 rust-lzma = { version = "0.6.0", optional = true }
 
@@ -52,14 +51,13 @@ winapi = { version = "0.3", optional = true, features = ["winbase", "stringapise
 
 
 [features]
-default = ["local_zip", "remote_ota", "metadata", "use-xz4rust"]
+default = ["local_zip", "remote_ota", "metadata"]
 remote_ota = ["dep:url", "dep:reqwest", "dep:webpki-roots", "dep:tokio", "dep:lazy_static"]
 hickory-dns = ["remote_ota", "dep:once_cell", "dep:reqwest-hickory-resolver"]
 differential_ota = ["dep:bsdiff"]
 local_zip = ["dep:winapi"]
 metadata= ["dep:serde", "dep:serde_json"]
-use-xz4rust = ["dep:xz4rust"]
-use-rust-lzma = ["dep:rust-lzma"]
+rust-lzma = ["dep:rust-lzma"]
 
 [build-dependencies]
 cc = "1.0.83"
