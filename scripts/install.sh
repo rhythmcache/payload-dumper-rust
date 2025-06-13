@@ -4,6 +4,13 @@ REPO_OWNER="rhythmcache"
 REPO_NAME="payload-dumper-rust"
 GITHUB_API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
 
+
+if command -v payload_dumper >/dev/null 2>&1; then
+    echo "[!] payload_dumper is already installed at: $(which payload_dumper)"
+    echo "[^] Remove it first if you want to reinstall"
+    exit 0
+fi
+
 # Determine system type and architecture
 echo -n "[*] Checking system type... "
 system_type="linux"
