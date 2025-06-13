@@ -26,7 +26,7 @@ Android OTA payload dumper written in Rust.
 
 - or Run this in termux / Linux Terminal to install 
   ```
-  bash <(curl -L "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/install.sh")
+  bash <(curl -sSL "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/install.sh")
   ```
   ---
 ### Install via Cargo
