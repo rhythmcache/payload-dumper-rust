@@ -28,6 +28,10 @@ Android OTA payload dumper written in Rust.
   ```
   bash <(curl -sSL "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/install.sh")
   ```
+- To install on windows, run this in Powershell
+```
+powershell -Command "& {Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/install.ps1' -OutFile "$env:TEMP\install-pt.ps1"; Start-Process powershell.exe -ArgumentList '-ExecutionPolicy', 'Bypass', '-File', "$env:TEMP\install-pt.ps1"}"
+```
   ---
 ### Install via Cargo
 
