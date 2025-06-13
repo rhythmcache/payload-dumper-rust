@@ -245,7 +245,7 @@ jobs:
           if [ "${{ matrix.arch }}" = "armv7" ]; then
             export CFLAGS_arm_linux_androideabi="-O3 -target armv7a-linux-androideabi21"
           fi
-          
+          rm -f build.rs
           STATIC_LIBS=1 cargo build --release --target ${{ matrix.target }} --features differential_ota
 
       - name: Verify binary
