@@ -24,7 +24,7 @@ Android OTA payload dumper written in Rust.
 - Download Binaries for your respective Platform from [releases section](https://github.com/rhythmcache/payload-dumper-rust/releases)
 - If you are using a rooted android device you might want to install it as a [magisk module](https://github.com/rhythmcache/payload-dumper-rust/releases/download/0.3.0/payload_dumper-android-magisk-module.zip)
 
-- Run this in termux / Linux Terminal to install this tool
+- or Run this in termux / Linux Terminal to install 
   ```
   bash <(curl -L "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/install.sh")
   ```
