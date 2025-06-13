@@ -42,11 +42,11 @@ get_asset_pattern() {
     if echo "$arch" | grep -qiE 'arm64|aarch64'; then
         echo "aarch64|arm64"
     elif echo "$arch" | grep -qiE 'armv7|armeabi-v7a'; then
-        echo "armv7"
+        echo "armv7|armeabi-v7a|arm"
     elif echo "$arch" | grep -qiE 'x86_64|amd64'; then
-        echo "x86_64"
+        echo "x86_64|amd64|x64"
     elif echo "$arch" | grep -qiE 'i686|x86'; then
-        echo "i686"
+        echo "i686|x86"
     elif echo "$arch" | grep -qi 'riscv64'; then
         echo "riscv64"
     else
