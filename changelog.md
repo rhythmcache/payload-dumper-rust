@@ -1,3 +1,4 @@
+<!--
 - More informations in metadata JSON ( `--metadata` )
 - view security patch while extracting ( if available )
 - use `reqwest` instead of attohttpc 
@@ -6,3 +7,4 @@
 - can disable parallel processing with `--no-parallel` argument
 - tried to fixed issues related to local zip files ( especially on windows)
 - some extra improvements
+-->
