@@ -4,12 +4,14 @@ use crate::install_operation;
 use anyhow::{Result, anyhow};
 use byteorder::{BigEndian, ReadBytesExt};
 use prost::Message;
+use std::io::SeekFrom;
+use std::time::Duration;
+/*
 #[cfg(all(windows, feature = "local_zip"))]
 use std::ffi::OsStr;
-use std::io::SeekFrom;
 #[cfg(all(windows, feature = "local_zip"))]
 use std::os::windows::ffi::OsStrExt;
-use std::time::Duration;
+
 
 #[cfg(all(windows, feature = "local_zip"))]
 pub fn handle_path(path: &str) -> Result<String> {
@@ -61,6 +63,8 @@ pub fn get_zip_error_message(error_code: i32) -> &'static str {
         _ => "Unknown error",
     }
 }
+
+*/
 
 pub fn is_differential_ota(manifest: &DeltaArchiveManifest) -> bool {
     manifest.partitions.iter().any(|partition| {

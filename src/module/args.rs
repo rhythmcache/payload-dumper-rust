@@ -54,7 +54,6 @@ pub struct Args {
     )]
     pub list: bool,
 
-    
     #[cfg(feature = "differential_ota")]
     #[arg(
         long,

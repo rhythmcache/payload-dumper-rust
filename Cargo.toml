@@ -1,6 +1,6 @@
 [package]
 name = "payload_dumper"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 authors = ["rhythmcache"]
 description = "Rust-based CLI utility to extract Android OTA payload.bin"
@@ -18,7 +18,7 @@ bzip2 = "0.5.2"
 clap = { version = "4.5.40", features = ["derive"] }
 digest = "0.10.7"
 indicatif = "0.17.11"
-prost = "0.13.5"
+prost = "0.14.0"
 sha2 = "0.10.9"
 rayon = "1.10.0"
 memmap2 = "0.9.5"
@@ -29,12 +29,11 @@ rand = "0.9.1"
 hex = "0.4.3"
 xz4rust = "0.2.1"
 
-
 serde = { version = "1.0.219", features = ["derive"], optional = true }
 serde_json = { version = "1.0.140", optional = true }
 
 bsdiff = { version = "0.2.1", optional = true }
-rust-lzma = { version = "0.6.0", optional = true }
+# rust-lzma = { version = "0.6.0", optional = true }
 
 once_cell = { version = "1.21.3", optional = true }
 lazy_static = { version = "1.5.0", optional = true }
@@ -45,8 +44,8 @@ reqwest-hickory-resolver = { version = "0.2.0", optional = true }
 url = { version = "2.5.4", optional = true }
 
 
-[target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", optional = true, features = ["winbase", "stringapiset", "winnls"] }
+# [target.'cfg(windows)'.dependencies]
+# winapi = { version = "0.3", optional = true, features = ["winbase", "stringapiset", "winnls"] }
 
 
 
@@ -55,12 +54,12 @@ default = ["local_zip", "remote_ota", "metadata"]
 remote_ota = ["dep:url", "dep:reqwest", "dep:webpki-roots", "dep:tokio", "dep:lazy_static"]
 hickory-dns = ["remote_ota", "dep:once_cell", "dep:reqwest-hickory-resolver"]
 differential_ota = ["dep:bsdiff"]
-local_zip = ["dep:winapi"]
+local_zip = []
 metadata= ["dep:serde", "dep:serde_json"]
-rust-lzma = ["dep:rust-lzma"]
+# rust-lzma = ["dep:rust-lzma"]
 
-[build-dependencies]
-cc = "1.0.83"
+# [build-dependencies]
+# cc = "1.0.83"
 
 [profile.release]
 strip = true

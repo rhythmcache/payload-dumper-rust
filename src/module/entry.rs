@@ -7,15 +7,13 @@ use crate::module::http::HttpReader;
 #[cfg(feature = "metadata")]
 use crate::module::metadata::save_metadata;
 use crate::module::payload_dumper::{create_payload_reader, dump_partition};
-#[cfg(feature = "remote_ota")]
-use crate::module::remote_zip::RemoteZipReader;
-#[cfg(feature = "local_zip")]
-use crate::module::utils::get_zip_error_message;
 use crate::module::utils::list_partitions;
 use crate::module::utils::{format_elapsed_time, format_size, is_differential_ota};
 use crate::module::verify::verify_partitions_hash;
 #[cfg(feature = "local_zip")]
-use crate::module::zip::{LibZipReader, zip_close, zip_open};
+use crate::module::zip::local_zip::ZipPayloadReader;
+#[cfg(feature = "remote_ota")]
+use crate::module::zip::remote_zip::RemoteZipReader;
 use anyhow::{Result, anyhow};
 use byteorder::{BigEndian, ReadBytesExt};
 use clap::Parser;
@@ -167,39 +165,9 @@ pub fn run() -> Result<()> {
     } else if is_local_zip {
         #[cfg(feature = "local_zip")]
         {
-            let path_str = args
-                .payload_path
-                .to_str()
-                .ok_or_else(|| anyhow!("Invalid path"))?;
-
-            // let normalized_path = path_str.replace('\\', "/");
-
-            let c_path = match std::ffi::CString::new(path_str.to_string()) {
-                Ok(p) => p,
-                Err(e) => {
-                    return Err(anyhow!("Invalid path contains null bytes: {}", e));
-                }
-            };
-
-            let mut error = 0;
-            let archive = unsafe { zip_open(c_path.as_ptr(), 0, &mut error) };
-
-            if archive.is_null() {
-                let error_msg = get_zip_error_message(error);
-                return Err(anyhow!(
-                    "Failed to open ZIP file: {} ({})",
-                    error_msg,
-                    error
-                ));
-            }
-
-            match { LibZipReader::new(archive, path_str.to_string()) } {
-                Ok(reader) => Box::new(reader) as Box<dyn ReadSeek>,
-                Err(e) => {
-                    unsafe { zip_close(archive) };
-                    return Err(e);
-                }
-            }
+            ZipPayloadReader::<std::fs::File>::from_file(&args.payload_path)
+                .map_err(|e| anyhow::anyhow!("Failed to open ZIP file: {}", e))
+                .map(|reader| Box::new(reader) as Box<dyn ReadSeek>)?
         }
         #[cfg(not(feature = "local_zip"))]
         {
@@ -399,35 +367,41 @@ pub fn run() -> Result<()> {
                                 active_readers.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                             }
 
-                            let reader_result = if is_url {
-                                #[cfg(feature = "remote_ota")]
-                                {
-                                    RemoteZipReader::new_for_parallel((*payload_url).clone())
+                            let reader_result =
+                                if is_url {
+                                    #[cfg(feature = "remote_ota")]
+                                    {
+                                        RemoteZipReader::new_for_parallel((*payload_url).clone())
+                                            .map(|reader| Box::new(reader) as Box<dyn ReadSeek>)
+                                    }
+                                    #[cfg(not(feature = "remote_ota"))]
+                                    {
+                                        Err(anyhow!("Remote OTA feature not enabled"))
+                                    }
+                                    // Fix for the error type mismatch around line 384-398
+                                } else if is_local_zip {
+                                    #[cfg(feature = "local_zip")]
+                                    {
+                                        let result = ZipPayloadReader::new_for_parallel(
+                                            (*payload_path).clone(),
+                                        )
                                         .map(|reader| Box::new(reader) as Box<dyn ReadSeek>)
-                                }
-                                #[cfg(not(feature = "remote_ota"))]
-                                {
-                                    Err(anyhow!("Remote OTA feature not enabled"))
-                                }
-                            } else if is_local_zip {
-                                #[cfg(feature = "local_zip")]
-                                {
-                                    let result =
-                                        LibZipReader::new_for_parallel((*payload_path).clone())
-                                            .map(|reader| Box::new(reader) as Box<dyn ReadSeek>);
-
-                                    active_readers
-                                        .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-
-                                    result
-                                }
-                                #[cfg(not(feature = "local_zip"))]
-                                {
-                                    Err(anyhow!("Local ZIP feature not enabled"))
-                                }
-                            } else {
-                                create_payload_reader(&args.payload_path)
-                            };
+                                        .map_err(|e| {
+                                            anyhow::anyhow!("Failed to create ZIP reader: {}", e)
+                                        }); // Convert io::Error to anyhow::Error
+                                        active_readers
+                                            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                                        result
+                                    }
+                                    #[cfg(not(feature = "local_zip"))]
+                                    {
+                                        Err(anyhow!("Local ZIP feature not enabled"))
+                                    }
+                                } else {
+                                    create_payload_reader(&args.payload_path).map_err(|e| {
+                                        anyhow::anyhow!("Failed to create payload reader: {}", e)
+                                    })
+                                };
 
                             let mut reader = match reader_result {
                                 Ok(reader) => reader,
