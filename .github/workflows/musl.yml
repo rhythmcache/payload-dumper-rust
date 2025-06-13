@@ -265,6 +265,7 @@ jobs:
             echo "PATH: $PATH"
             which ${{ env.CC }} || echo "Cross compiler not found in PATH"
           fi
+          export RUSTFLAGS="-C target-feature=+crt-static"
           cargo build --release --target ${{ env.TARGET }} --all-features
 
       - name: Create Dir
