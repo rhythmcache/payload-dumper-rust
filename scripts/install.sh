@@ -4,7 +4,6 @@ REPO_OWNER="rhythmcache"
 REPO_NAME="payload-dumper-rust"
 GITHUB_API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
 
-
 if command -v payload_dumper >/dev/null 2>&1; then
     echo "[!] payload_dumper is already installed at: $(which payload_dumper)"
     echo "[^] Remove it first if you want to reinstall"
@@ -24,6 +23,11 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
     echo "macOS"
     arch=$(uname -m)
     bin_dir="$HOME/.extra/bin"
+elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "win32" ]] || [[ "$(uname -s)" == MINGW* ]] || [[ "$(uname -s)" == MSYS* ]]; then
+    system_type="windows"
+    echo "Windows"
+    arch=$(uname -m)
+    bin_dir="$HOME/.extra/bin"
 else
     echo "Linux"
     arch=$(uname -m)
@@ -32,7 +36,6 @@ fi
 
 echo "[*] Detected architecture: $arch"
 sleep 0.5
-
 
 get_asset_pattern() {
     local arch=$1
@@ -89,6 +92,10 @@ while IFS= read -r line; do
              echo "$current_name" | grep -qi "darwin" && \
              echo "$current_name" | grep -qiE "$asset_pattern"; then
             asset_name="$current_name"
+        elif [[ "$system_type" == "windows" ]] && \
+             echo "$current_name" | grep -qiE "windows|msvc|pc-windows" && \
+             echo "$current_name" | grep -qiE "$asset_pattern"; then
+            asset_name="$current_name"
         elif [[ "$system_type" == "linux" ]] && \
              echo "$current_name" | grep -qi "linux" && \
              echo "$current_name" | grep -qiE "$asset_pattern"; then
@@ -111,7 +118,13 @@ echo "[*] Found matching release: $asset_name"
 echo "[*] Download URL: $download_url"
 temp_dir=$(mktemp -d)
 zip_file="$temp_dir/$asset_name"
-bin_path="$bin_dir/payload_dumper"
+
+# Set binary path with .exe extension for Windows
+if [[ "$system_type" == "windows" ]]; then
+    bin_path="$bin_dir/payload_dumper.exe"
+else
+    bin_path="$bin_dir/payload_dumper"
+fi
 
 # Create bin directory if it doesn't exist
 mkdir -p "$bin_dir"
@@ -138,10 +151,16 @@ else
     exit 1
 fi
 
-binary_file=$(find "$temp_dir" -type f -executable | head -n 1)
-
-if [ -z "$binary_file" ]; then
-    binary_file=$(find "$temp_dir" -type f \( -name "payload_dumper*" -o -name "*dumper*" -o -name "*" \) | grep -v "\.zip$" | head -n 1)
+if [[ "$system_type" == "windows" ]]; then
+    binary_file=$(find "$temp_dir" -type f -name "*.exe" | head -n 1)
+    if [ -z "$binary_file" ]; then
+        binary_file=$(find "$temp_dir" -type f \( -name "payload_dumper*" -o -name "*dumper*" \) | head -n 1)
+    fi
+else
+    binary_file=$(find "$temp_dir" -type f -executable | head -n 1)
+    if [ -z "$binary_file" ]; then
+        binary_file=$(find "$temp_dir" -type f \( -name "payload_dumper*" -o -name "*dumper*" -o -name "*" \) | grep -v "\.zip$" | head -n 1)
+    fi
 fi
 
 if [ -z "$binary_file" ]; then
@@ -163,17 +182,22 @@ if cp "$binary_file" "$bin_path" && chmod +x "$bin_path"; then
     if "$bin_path" --help >/dev/null 2>&1; then
         if [[ "$system_type" != "termux" ]]; then
             echo "   Installed package \`payload_dumper $release_tag\` (executable \`$bin_path\`)"
-            echo "   Please add the following to your shell configuration file:"
-            echo "   export PATH=\"\$PATH:$bin_dir\""
+            if [[ "$system_type" == "windows" ]]; then
+                echo "   Please add the following to your shell configuration file (.bashrc, .zshrc, etc.):"
+                echo "   export PATH=\"\$PATH:$bin_dir\""
+            else
+                echo "   Please add the following to your shell configuration file:"
+                echo "   export PATH=\"\$PATH:$bin_dir\""
+            fi
         else
             echo "   Installed package \`payload_dumper $release_tag\` (executable \`payload_dumper\`)"
         fi
     else
-    echo "[✗] Something went wrong. The binary may not be compatible."
-    echo "[*] Cleaning up...."
-    rm -f "$bin_path"
-    exit 1
-fi
+        echo "[✗] Something went wrong. The binary may not be compatible."
+        echo "[*] Cleaning up...."
+        rm -f "$bin_path"
+        exit 1
+    fi
 else
     echo "[✗] Failed to install binary"
     rm -rf "$temp_dir"
