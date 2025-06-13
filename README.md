@@ -24,9 +24,9 @@ Android OTA payload dumper written in Rust.
 - Download Binaries for your respective Platform from [releases section](https://github.com/rhythmcache/payload-dumper-rust/releases)
 - If you are using a rooted android device you might want to install it as a [magisk module](https://github.com/rhythmcache/payload-dumper-rust/releases/download/0.3.0/payload_dumper-android-magisk-module.zip)
 
-- For unrooted Android - run this in termux to install it
+- Run this in termux / Linux Terminal to install this tool
   ```
-  bash <(curl -L "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/termux-install.sh")
+  bash <(curl -L "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/install.sh")
   ```
   ---
 ### Install via Cargo
@@ -36,7 +36,9 @@ If you have Rust and Cargo installed, you can install this tool with:
 ```bash
 cargo install payload_dumper
 ```
+<!--
 Note - Installation VIA Cargo might fail if you dont have `protobuf-compiler`, `libzip`, `zlib` and `liblzma` installed on your system
+-->
 
 
   ---
@@ -139,10 +141,6 @@ Arguments:
 #### Build :
 To build this , you'll need:
 - Rust compiler and Cargo
-- protobuf-compiler
-- Other obvious dependencies
-- You may also need to link against libzip, zlib, and liblzma.
-
 ---
 <!--
 - ***To Build On Termux , Simply Run***
