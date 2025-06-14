@@ -1,3 +1,4 @@
+/*
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let mut config = prost_build::Config::new();
     //  config.type_attribute(".", "#[derive(serde::Serialize)]");
@@ -112,6 +113,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("cargo:rustc-link-lib=static=zip");
         println!("cargo:rustc-link-lib=static=z");
     } else {
+    
         println!("cargo:rustc-link-lib=lzma");
         println!("cargo:rustc-link-lib=zip");
         println!("cargo:rustc-link-lib=z");
@@ -119,3 +121,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+*/
