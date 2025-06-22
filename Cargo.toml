@@ -14,7 +14,7 @@ categories = ["command-line-utilities"]
 [dependencies]
 anyhow = "1.0.98"
 byteorder = "1.5.0"
-bzip2 = { version = "0.5.2", default-features = false, features = ["libbz2-rs-sys"] }
+bzip2 = { version = "0.6.0", default-features = false, features = ["libbz2-rs-sys"] }
 clap = { version = "4.5.40", features = ["derive"] }
 digest = "0.10.7"
 indicatif = "0.17.11"
