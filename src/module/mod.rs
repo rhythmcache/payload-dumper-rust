@@ -1,5 +1,4 @@
 pub mod args;
-pub mod entry;
 #[cfg(feature = "remote_ota")]
 pub mod http;
 #[cfg(feature = "metadata")]
