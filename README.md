@@ -17,7 +17,9 @@ Android OTA payload dumper written in Rust.
 - Parallel Extraction ✅
 - Selective Partition Extraction ✅
 - Direct Extraction from URL ✅
+<!--
 - Incremental OTA support ❓ ( not tested )
+-->
 ---
 
 ## How To Use 
