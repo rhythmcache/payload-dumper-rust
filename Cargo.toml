@@ -14,32 +14,32 @@ categories = ["command-line-utilities"]
 [dependencies]
 anyhow = "1.0.98"
 byteorder = "1.5.0"
-bzip2 = { version = "0.6.0", default-features = false, features = ["libbz2-rs-sys"] }
-clap = { version = "4.5.40", features = ["derive"] }
+bzip2 = { version = "0.6", features = ["bzip2-sys", "static"] }
+clap = { version = "4.5.41", features = ["derive"] }
 digest = "0.10.7"
-indicatif = "0.17.11"
-prost = "0.14.0"
+indicatif = "0.18.0"
+prost = "0.14.1"
 sha2 = "0.10.9"
 rayon = "1.10.0"
-memmap2 = "0.9.5"
+memmap2 = "0.9.7"
 brotli = "8.0.1"
 zstd = "0.13.3"
 num_cpus = "1.17.0"
-rand = "0.9.1"
+rand = "0.9.2"
 hex = "0.4.3"
 xz4rust = "0.2.1"
 
 serde = { version = "1.0.219", features = ["derive"], optional = true }
-serde_json = { version = "1.0.140", optional = true }
+serde_json = { version = "1.0.141", optional = true }
 
 bsdiff = { version = "0.2.1", optional = true }
 # rust-lzma = { version = "0.6.0", optional = true }
 
 once_cell = { version = "1.21.3", optional = true }
 lazy_static = { version = "1.5.0", optional = true }
-reqwest = { version = "0.12.19", default-features = false, features = ["rustls-tls", "blocking", "gzip", "http2"], optional = true }
-webpki-roots = { version = "1.0.0", optional = true }
-tokio = { version = "1.45.1", features = ["rt", "rt-multi-thread", "io-util", "time"], optional = true }
+reqwest = { version = "0.12.22", default-features = false, features = ["rustls-tls", "blocking", "gzip", "http2"], optional = true }
+webpki-roots = { version = "1.0.2", optional = true }
+tokio = { version = "1.46.1", features = ["rt", "rt-multi-thread", "io-util", "time"], optional = true }
 reqwest-hickory-resolver = { version = "0.2.0", optional = true }
 url = { version = "2.5.4", optional = true }
 
