@@ -21,123 +21,6 @@ use std::time::Duration;
 // #[cfg(not(feature = "rust-lzma"))]
 use xz4rust::{XzDecoder, XzNextBlockResult};
 
-pub fn process_replace_xz_operation(
-    operation_index: usize,
-    op: &InstallOperation,
-    data: &[u8],
-    block_size: u64,
-    out_file: &mut (impl Write + Seek),
-) -> Result<()> {
-    let mut decoder =
-        XzDecoder::in_heap_with_alloc_dict_size(xz4rust::DICT_SIZE_MIN, xz4rust::DICT_SIZE_MAX);
-
-    let mut input_position = 0;
-    let mut temp_buffer = [0u8; 64 * 1024]; // 64KB buffer
-    if let Some(first_extent) = op.dst_extents.first() {
-        out_file.seek(SeekFrom::Start(
-            first_extent.start_block.unwrap_or(0) * block_size,
-        ))?;
-    } else {
-        return Err(anyhow!(
-            "Operation {} has no destination extents",
-            operation_index
-        ));
-    }
-
-    // let mut total_written = 0;
-    let mut current_extent_index = 0;
-    let mut current_extent_written = 0;
-
-    loop {
-        match decoder.decode(&data[input_position..], &mut temp_buffer) {
-            Ok(XzNextBlockResult::NeedMoreData(input_consumed, output_produced)) => {
-                input_position += input_consumed;
-
-                if output_produced > 0 {
-                    write_to_extents(
-                        &mut temp_buffer[..output_produced],
-                        op,
-                        block_size,
-                        out_file,
-                        &mut current_extent_index,
-                        &mut current_extent_written,
-                    )?;
-                    // total_written += output_produced;
-                }
-            }
-            Ok(XzNextBlockResult::EndOfStream(_, output_produced)) => {
-                if output_produced > 0 {
-                    write_to_extents(
-                        &mut temp_buffer[..output_produced],
-                        op,
-                        block_size,
-                        out_file,
-                        &mut current_extent_index,
-                        &mut current_extent_written,
-                    )?;
-                    // total_written += output_produced;
-                }
-                break;
-            }
-            Err(e) => {
-                return Err(anyhow!(
-                    "XZ decompression failed for operation {}: {}",
-                    operation_index,
-                    e
-                ));
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn write_to_extents(
-    data: &[u8],
-    op: &InstallOperation,
-    block_size: u64,
-    out_file: &mut (impl Write + Seek),
-    current_extent_index: &mut usize,
-    current_extent_written: &mut usize,
-) -> Result<()> {
-    let mut data_offset = 0;
-
-    while data_offset < data.len() && *current_extent_index < op.dst_extents.len() {
-        let current_extent = &op.dst_extents[*current_extent_index];
-        let extent_size = (current_extent.num_blocks.unwrap_or(0) * block_size) as usize;
-        let remaining_in_extent = extent_size.saturating_sub(*current_extent_written);
-
-        if remaining_in_extent == 0 {
-            // Move to next extent
-            *current_extent_index += 1;
-            *current_extent_written = 0;
-
-            if *current_extent_index < op.dst_extents.len() {
-                let next_extent = &op.dst_extents[*current_extent_index];
-                out_file.seek(SeekFrom::Start(
-                    next_extent.start_block.unwrap_or(0) * block_size,
-                ))?;
-            }
-            continue;
-        }
-
-        let bytes_to_write = std::cmp::min(data.len() - data_offset, remaining_in_extent);
-
-        out_file.write_all(&data[data_offset..data_offset + bytes_to_write])?;
-
-        data_offset += bytes_to_write;
-        *current_extent_written += bytes_to_write;
-    }
-
-    if data_offset < data.len() {
-        return Err(anyhow!(
-            "Insufficient destination extents for decompressed data"
-        ));
-    }
-
-    Ok(())
-}
-
 pub fn process_operation(
     operation_index: usize,
     op: &InstallOperation,
@@ -193,140 +76,108 @@ pub fn process_operation(
         #[cfg(not(feature = "rust-lzma"))]
         */
         install_operation::Type::ReplaceXz => {
-            process_replace_xz_operation(operation_index, op, &data, block_size, out_file)?;
-        }
+            let mut decompressed = Vec::new();
+            let mut decoder = XzDecoder::in_heap_with_alloc_dict_size(
+                xz4rust::DICT_SIZE_MIN,
+                xz4rust::DICT_SIZE_MAX,
+            );
 
-        install_operation::Type::Zstd => {
-            let mut decoder = zstd::stream::Decoder::new(Cursor::new(&data))?;
-            let mut temp_buffer = [0u8; 64 * 1024]; // 64KB buffer
-
-            let mut current_extent_index = 0;
-            let mut current_extent_written = 0;
-
-            // Seek to first extent
-            if let Some(first_extent) = op.dst_extents.first() {
-                out_file.seek(SeekFrom::Start(
-                    first_extent.start_block.unwrap_or(0) * block_size,
-                ))?;
-            } else {
-                return Err(anyhow!(
-                    "Operation {} has no destination extents",
-                    operation_index
-                ));
-            }
+            let mut input_position = 0;
+            let mut temp_buffer = [0u8; 4096];
 
             loop {
-                match decoder.read(&mut temp_buffer) {
-                    Ok(0) => break, // EOF
-                    Ok(bytes_read) => {
-                        write_to_extents(
-                            &temp_buffer[..bytes_read],
-                            op,
-                            block_size,
-                            out_file,
-                            &mut current_extent_index,
-                            &mut current_extent_written,
-                        )?;
+                match decoder.decode(&data[input_position..], &mut temp_buffer) {
+                    Ok(XzNextBlockResult::NeedMoreData(input_consumed, output_produced)) => {
+                        input_position += input_consumed;
+                        decompressed.extend_from_slice(&temp_buffer[..output_produced]);
                     }
-                    Err(e) => {
-                        return Err(anyhow!(
-                            "Zstd decompression failed for operation {}: {}",
-                            operation_index,
-                            e
-                        ));
-                    }
-                }
-            }
-        }
-
-        install_operation::Type::ReplaceBz => {
-            let mut decoder = BzDecoder::new(Cursor::new(&data));
-            let mut temp_buffer = [0u8; 64 * 1024]; // 64KB buffer
-
-            let mut current_extent_index = 0;
-            let mut current_extent_written = 0;
-
-            // Seek to first extent
-            if let Some(first_extent) = op.dst_extents.first() {
-                out_file.seek(SeekFrom::Start(
-                    first_extent.start_block.unwrap_or(0) * block_size,
-                ))?;
-            } else {
-                return Err(anyhow!(
-                    "Operation {} has no destination extents",
-                    operation_index
-                ));
-            }
-
-            loop {
-                match decoder.read(&mut temp_buffer) {
-                    Ok(0) => break, // EOF
-                    Ok(bytes_read) => {
-                        write_to_extents(
-                            &temp_buffer[..bytes_read],
-                            op,
-                            block_size,
-                            out_file,
-                            &mut current_extent_index,
-                            &mut current_extent_written,
-                        )?;
+                    Ok(XzNextBlockResult::EndOfStream(_, output_produced)) => {
+                        decompressed.extend_from_slice(&temp_buffer[..output_produced]);
+                        break;
                     }
                     Err(e) => {
                         println!(
-                            "Warning: Skipping operation {} due to BZ2 decompression error: {}",
+                            "  Warning: Skipping operation {} due to XZ decompression error: {}",
                             operation_index, e
                         );
                         return Ok(());
                     }
                 }
             }
+
+            out_file.seek(SeekFrom::Start(
+                op.dst_extents[0].start_block.unwrap_or(0) * block_size,
+            ))?;
+            out_file.write_all(&decompressed)?;
         }
+        install_operation::Type::Zstd => match zstd::decode_all(Cursor::new(&data)) {
+            Ok(decompressed) => {
+                let mut pos = 0;
+                for ext in &op.dst_extents {
+                    let ext_size = (ext.num_blocks.unwrap_or(0) * block_size) as usize;
+                    let end_pos = pos + ext_size;
 
-        install_operation::Type::Replace => {
-            let mut pos = 0;
-            for ext in &op.dst_extents {
-                let ext_size = (ext.num_blocks.unwrap_or(0) * block_size) as usize;
-                let end_pos = pos + ext_size;
-
-                if end_pos <= data.len() {
-                    out_file.seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
-                    out_file.write_all(&data[pos..end_pos])?;
-                    pos = end_pos;
-                } else {
+                    if end_pos <= decompressed.len() {
+                        out_file
+                            .seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
+                        out_file.write_all(&decompressed[pos..end_pos])?;
+                        pos = end_pos;
+                    } else {
+                        println!(
+                            "  Warning: Skipping extent in operation {} due to insufficient decompressed data.",
+                            operation_index
+                        );
+                        break;
+                    }
+                }
+            }
+            Err(e) => {
+                println!(
+                    "  Warning: Skipping operation {} due to unknown Zstd format: {}",
+                    operation_index, e
+                );
+                return Ok(());
+            }
+        },
+        install_operation::Type::ReplaceBz => {
+            let mut decoder = BzDecoder::new(Cursor::new(&data));
+            let mut decompressed = Vec::new();
+            match decoder.read_to_end(&mut decompressed) {
+                Ok(_) => {
+                    out_file.seek(SeekFrom::Start(
+                        op.dst_extents[0].start_block.unwrap_or(0) * block_size,
+                    ))?;
+                    out_file.write_all(&decompressed)?;
+                }
+                Err(e) => {
                     println!(
-                        "  Warning: Skipping extent in operation {} due to insufficient data.",
-                        operation_index
+                        " Warning: Skipping operation {} due to unknown BZ2 format.  : {}",
+                        operation_index, e
                     );
-                    break;
+                    return Ok(());
                 }
             }
         }
-
+        install_operation::Type::Replace => {
+            out_file.seek(SeekFrom::Start(
+                op.dst_extents[0].start_block.unwrap_or(0) * block_size,
+            ))?;
+            out_file.write_all(&data)?;
+        }
         #[cfg(feature = "differential_ota")]
         install_operation::Type::SourceCopy => {
             let old_file = old_file
                 .ok_or_else(|| anyhow!("SOURCE_COPY supported only for differential OTA"))?;
-
-            for (src_ext, dst_ext) in op.src_extents.iter().zip(op.dst_extents.iter()) {
-                old_file.seek(SeekFrom::Start(
-                    src_ext.start_block.unwrap_or(0) * block_size,
-                ))?;
-                out_file.seek(SeekFrom::Start(
-                    dst_ext.start_block.unwrap_or(0) * block_size,
-                ))?;
-
-                let mut buffer = [0u8; 64 * 1024]; // Fixed buffer
-                let mut remaining = (src_ext.num_blocks.unwrap_or(0) * block_size) as usize;
-
-                while remaining > 0 {
-                    let to_read = std::cmp::min(buffer.len(), remaining);
-                    old_file.read_exact(&mut buffer[..to_read])?;
-                    out_file.write_all(&buffer[..to_read])?;
-                    remaining -= to_read;
-                }
+            out_file.seek(SeekFrom::Start(
+                op.dst_extents[0].start_block.unwrap_or(0) * block_size,
+            ))?;
+            for ext in &op.src_extents {
+                old_file.seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
+                let mut buffer = vec![0u8; (ext.num_blocks.unwrap_or(0) * block_size) as usize];
+                old_file.read_exact(&mut buffer)?;
+                out_file.write_all(&buffer)?;
             }
         }
-
         #[cfg(feature = "differential_ota")]
         install_operation::Type::SourceBsdiff | install_operation::Type::BrotliBsdiff => {
             let old_file =
@@ -366,7 +217,6 @@ pub fn process_operation(
                 }
             }
         }
-
         install_operation::Type::Zero => {
             let zeros = vec![0u8; block_size as usize];
             for ext in &op.dst_extents {
@@ -376,7 +226,6 @@ pub fn process_operation(
                 }
             }
         }
-
         #[cfg(not(feature = "differential_ota"))]
         install_operation::Type::SourceCopy
         | install_operation::Type::SourceBsdiff
@@ -444,6 +293,8 @@ pub fn dump_partition(
         let old_path = args.old.join(format!("{}.img", partition_name));
         let mut file = File::open(&old_path)
             .with_context(|| format!("Failed to open original image: {:?}", old_path))?;
+
+        // Verify old partition hash if available
         if let Some(old_partition_info) = &partition.old_partition_info {
             if let Err(e) = verify_old_partition(&mut file, old_partition_info) {
                 return Err(anyhow!(
