@@ -4,7 +4,6 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 #[command(next_line_help = true)]
-
 pub struct Args {
     pub payload_path: PathBuf,
 
@@ -14,6 +13,12 @@ pub struct Args {
         help = "Output directory for extracted partitions"
     )]
     pub out: PathBuf,
+
+    #[arg(
+        long,
+        help = "Custom User-Agent string for HTTP requests (only used with remote URLs)"
+    )]
+    pub user_agent: Option<String>,
 
     #[cfg(feature = "differential_ota")]
     #[arg(long, help = "Enable differential OTA mode (requires --old)")]

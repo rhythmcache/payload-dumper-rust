@@ -73,8 +73,14 @@ impl RemoteZipReader {
         })
     }
 
+
     pub fn new_for_parallel(url: String) -> Result<Self> {
-        let http_reader = HttpReader::new_silent(url.clone())?;
+        Self::new_for_parallel_with_user_agent(url, None)
+    }
+
+    //  accepts custom user agent
+    pub fn new_for_parallel_with_user_agent(url: String, user_agent: Option<&str>) -> Result<Self> {
+        let http_reader = HttpReader::new_with_user_agent(url.clone(), user_agent, false)?;
         if let Ok(payload_info) = Self::find_payload_via_metadata(&mut http_reader.clone()) {
             return Ok(Self {
                 http_reader,
@@ -87,6 +93,20 @@ impl RemoteZipReader {
     }
 }
 
+/*==============================================================================================
+    pub fn new_with_user_agent(url: String, user_agent: Option<&str>) -> Result<Self> {
+        let http_reader = HttpReader::new_with_user_agent(url.clone(), user_agent, true)?;
+        if let Ok(payload_info) = Self::find_payload_via_metadata(&mut http_reader.clone()) {
+            return Ok(Self {
+                http_reader,
+                payload_offset: payload_info.0,
+                payload_size: payload_info.1,
+                current_position: 0,
+            });
+        }
+        Self::find_payload_via_zip_structure(http_reader)
+    }
+================================================================================================*/
 impl Read for RemoteZipReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if self.current_position >= self.payload_size {
@@ -100,7 +120,6 @@ impl Read for RemoteZipReader {
             return Ok(0);
         }
 
-        // Use read_at instead of seek + read
         let bytes_read = self.http_reader.read_at(
             self.payload_offset + self.current_position,
             &mut buf[..to_read],

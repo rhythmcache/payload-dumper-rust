@@ -22,44 +22,56 @@ use reqwest_hickory_resolver::HickoryResolver;
 static GLOBAL_RESOLVER: Lazy<Arc<HickoryResolver>> =
     Lazy::new(|| Arc::new(HickoryResolver::default()));
 
+const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
 lazy_static! {
-    static ref HTTP_CLIENT: Client = {
-        let mut headers = header::HeaderMap::new();
-        headers.insert(
-            header::ACCEPT_ENCODING,
-            header::HeaderValue::from_static("gzip, deflate, br"),
-        );
-        headers.insert(header::ACCEPT, header::HeaderValue::from_static("*/*"));
-        headers.insert(header::USER_AGENT, header::HeaderValue::from_static(
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-        ));
-        headers.insert(
-            header::ACCEPT_RANGES,
-            header::HeaderValue::from_static("bytes"),
-        );
-        headers.insert(
-            header::CONNECTION,
-            header::HeaderValue::from_static("keep-alive"),
-        );
-        headers.insert(
-            header::CACHE_CONTROL,
-            header::HeaderValue::from_static("no-transform"),
-        );
-
-        let client_builder = Client::builder()
-            .timeout(Duration::from_secs(600))
-            .tcp_keepalive(Some(Duration::from_secs(30)))
-            .pool_max_idle_per_host(10)
-            .default_headers(headers)
-            .redirect(reqwest::redirect::Policy::limited(10));
-
-        #[cfg(feature = "hickory-dns")]
-        let client_builder = client_builder.dns_resolver(GLOBAL_RESOLVER.clone());
-
-        client_builder.build().unwrap_or_else(|_| Client::new())
-    };
     static ref ACCEPT_RANGES_WARNING_SHOWN: AtomicBool = AtomicBool::new(false);
     static ref FILE_SIZE_INFO_SHOWN: AtomicBool = AtomicBool::new(false);
+}
+
+// Function to create HTTP client
+pub fn create_http_client(user_agent: Option<&str>) -> Result<Client> {
+    let mut headers = header::HeaderMap::new();
+    headers.insert(
+        header::ACCEPT_ENCODING,
+        header::HeaderValue::from_static("gzip, deflate, br"),
+    );
+    headers.insert(header::ACCEPT, header::HeaderValue::from_static("*/*"));
+
+    // use custom user agent if provided otherwise use default
+    let ua = user_agent.unwrap_or(DEFAULT_USER_AGENT);
+    headers.insert(
+        header::USER_AGENT,
+        header::HeaderValue::from_str(ua)
+            .map_err(|e| anyhow!("Invalid user agent string: {}", e))?,
+    );
+
+    headers.insert(
+        header::ACCEPT_RANGES,
+        header::HeaderValue::from_static("bytes"),
+    );
+    headers.insert(
+        header::CONNECTION,
+        header::HeaderValue::from_static("keep-alive"),
+    );
+    headers.insert(
+        header::CACHE_CONTROL,
+        header::HeaderValue::from_static("no-transform"),
+    );
+
+    let client_builder = Client::builder()
+        .timeout(Duration::from_secs(600))
+        .tcp_keepalive(Some(Duration::from_secs(30)))
+        .pool_max_idle_per_host(10)
+        .default_headers(headers)
+        .redirect(reqwest::redirect::Policy::limited(10));
+
+    #[cfg(feature = "hickory-dns")]
+    let client_builder = client_builder.dns_resolver(GLOBAL_RESOLVER.clone());
+
+    client_builder
+        .build()
+        .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))
 }
 
 pub struct HttpReader {
@@ -77,7 +89,7 @@ impl Clone for HttpReader {
             url: self.url.clone(),
             position: self.position,
             content_length: self.content_length,
-            client: HTTP_CLIENT.clone(),
+            client: self.client.clone(),
             content_type: self.content_type.clone(),
             supports_ranges: self.supports_ranges,
         }
@@ -85,16 +97,20 @@ impl Clone for HttpReader {
 }
 
 impl HttpReader {
-    pub fn new(url: String) -> Result<Self> {
-        Self::new_internal(url, true)
-    }
+    // pub fn new(url: String) -> Result<Self> {
+    //    Self::new_with_user_agent(url, None, true)
+    //   }
 
     pub fn new_silent(url: String) -> Result<Self> {
-        Self::new_internal(url, false)
+        Self::new_with_user_agent(url, None, false)
     }
 
-    fn new_internal(url: String, print_size: bool) -> Result<Self> {
-        let client = HTTP_CLIENT.clone();
+    pub fn new_with_user_agent(
+        url: String,
+        user_agent: Option<&str>,
+        print_size: bool,
+    ) -> Result<Self> {
+        let client = create_http_client(user_agent)?;
 
         let parsed_url = url::Url::parse(&url).map_err(|e| anyhow!("Invalid URL: {}", e))?;
 
@@ -176,78 +192,6 @@ impl HttpReader {
         ))
     }
 
-    /*
-
-    pub fn supports_ranges(&self) -> bool {
-        self.supports_ranges
-    }
-
-
-
-    fn read_range(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if self.position >= self.content_length {
-            return Ok(0);
-        }
-
-        let start = self.position;
-        let remaining = self.content_length - start;
-        let to_read = std::cmp::min(buf.len() as u64, remaining) as usize;
-
-        if to_read == 0 {
-            return Ok(0);
-        }
-
-        // Use a reasonable chunk size, but don't exceed buffer size
-        let chunk_size = std::cmp::min(to_read, 4 * 1024 * 1024);
-        let end = start + chunk_size as u64 - 1;
-        let range = format!("bytes={}-{}", start, end);
-
-        let mut retry_count = 0;
-        let max_retries = 3;
-
-        while retry_count < max_retries {
-            let request = self
-                .client
-                .get(&self.url)
-                .header(header::RANGE, range.clone())
-                .header(header::CONNECTION, "keep-alive");
-
-            match request.send() {
-                Ok(mut response) => {
-                    // Check for success or partial content (206)
-                    if !response.status().is_success() && response.status().as_u16() != 206 {
-                        return Err(io::Error::new(
-                            io::ErrorKind::Other,
-                            format!("HTTP error: {} for range {}", response.status(), range),
-                        ));
-                    }
-
-                    // Read the actual response data
-                    let bytes_read = copy_from_response(&mut response, &mut buf[..chunk_size])?;
-                    self.position += bytes_read as u64;
-                    return Ok(bytes_read);
-                }
-                Err(e) => {
-                    retry_count += 1;
-                    if retry_count == max_retries {
-                        return Err(io::Error::new(
-                            io::ErrorKind::Other,
-                            format!("Failed to read range {} after {} retries: {}", range, max_retries, e)
-                        ));
-                    }
-                    std::thread::sleep(Duration::from_secs(2 * retry_count as u64));
-                }
-            }
-        }
-
-        Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Failed to read range after maximum retries",
-        ))
-    }
-
-    */
-
     pub fn read_at(&self, offset: u64, buf: &mut [u8]) -> io::Result<usize> {
         if offset >= self.content_length {
             return Ok(0);
@@ -308,7 +252,6 @@ impl HttpReader {
 
 impl Read for HttpReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        // Use read_at with current position instead of read_range
         let bytes_read = self.read_at(self.position, buf)?;
         self.position += bytes_read as u64;
         Ok(bytes_read)

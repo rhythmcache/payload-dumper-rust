@@ -132,6 +132,8 @@ Arguments:
       List available partitions
   --metadata
       Save complete metadata as json ( use -o - to write to stdout )
+  --user-agent
+      Custom User-Agent string for HTTP requests (only used with remote URLs)
   --no-verify
       Skip Hash Verification    
   --no-parallel
