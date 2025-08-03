@@ -37,7 +37,6 @@ lazy_static! {
 
 include!("proto/update_metadata.rs");
 
-
 trait ReadSeek: Read + Seek {}
 impl<T: Read + Seek> ReadSeek for T {}
 
@@ -142,7 +141,10 @@ fn main() -> Result<()> {
             };
 
             if is_zip || content_type.as_deref() == Some("application/zip") {
-                let reader = RemoteZipReader::new_for_parallel(url)?;
+                let reader = RemoteZipReader::new_for_parallel_with_user_agent(
+                    url,
+                    args.user_agent.as_deref(),
+                )?;
                 let file_size = reader.http_reader.content_length;
                 main_pb.set_message("Connection established");
                 if file_size > 1024 * 1024 && !FILE_SIZE_INFO_SHOWN.swap(true, Ordering::SeqCst) {
@@ -150,7 +152,8 @@ fn main() -> Result<()> {
                 }
                 Box::new(reader) as Box<dyn ReadSeek>
             } else {
-                let reader = HttpReader::new(url)?;
+                let reader =
+                    HttpReader::new_with_user_agent(url, args.user_agent.as_deref(), true)?;
                 let file_size = reader.content_length;
                 main_pb.set_message("Connection established");
                 if file_size > 1024 * 1024 && !FILE_SIZE_INFO_SHOWN.swap(true, Ordering::SeqCst) {
@@ -375,14 +378,16 @@ fn main() -> Result<()> {
                                 if is_url {
                                     #[cfg(feature = "remote_ota")]
                                     {
-                                        RemoteZipReader::new_for_parallel((*payload_url).clone())
-                                            .map(|reader| Box::new(reader) as Box<dyn ReadSeek>)
+                                        RemoteZipReader::new_for_parallel_with_user_agent(
+                                            (*payload_url).clone(),
+                                            args.user_agent.as_deref(),
+                                        )
+                                        .map(|reader| Box::new(reader) as Box<dyn ReadSeek>)
                                     }
                                     #[cfg(not(feature = "remote_ota"))]
                                     {
                                         Err(anyhow!("Remote OTA feature not enabled"))
                                     }
-                                    // Fix for the error type mismatch around line 384-398
                                 } else if is_local_zip {
                                     #[cfg(feature = "local_zip")]
                                     {
