@@ -5,15 +5,13 @@ use crate::install_operation;
 use crate::module::args::Args;
 #[cfg(feature = "differential_ota")]
 use crate::module::patch::bspatch;
-use crate::module::verify::verify_hash;
 #[cfg(feature = "differential_ota")]
 use crate::module::verify::verify_old_partition;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use bzip2::read::BzDecoder;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 // #[cfg(feature = "rust-lzma")]
 // use lzma::LzmaReader;
-use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
@@ -35,15 +33,6 @@ pub fn process_operation(
     let mut data = vec![0u8; op.data_length.unwrap_or(0) as usize];
     payload_file.read_exact(&mut data)?;
 
-    if let Some(expected_hash) = op.data_sha256_hash.as_deref() {
-        if !verify_hash(&data, expected_hash) {
-            println!(
-                "  Warning: Operation {} data hash mismatch.",
-                operation_index
-            );
-            return Ok(());
-        }
-    }
     match op.r#type() {
         /*
         #[cfg(feature = "rust-lzma")]
@@ -334,37 +323,6 @@ pub fn dump_partition(
             "✓ Completed {} ({} ops)",
             partition_name, total_ops
         ));
-    }
-    drop(out_file);
-    let mut out_file = File::open(&out_path)
-        .with_context(|| format!("Failed to reopen {} for hash verification", partition_name))?;
-    if let Some(info) = &partition.new_partition_info {
-        if info.hash.as_ref().map_or(true, |hash| hash.is_empty()) {
-            let hash_pb = if let Some(mp) = multi_progress {
-                let pb = mp.add(ProgressBar::new_spinner());
-                pb.set_style(
-                    ProgressStyle::default_spinner()
-                        .template("{spinner:.green} {msg}")
-                        .unwrap(),
-                );
-                pb.enable_steady_tick(Duration::from_millis(100));
-                pb.set_message(format!("Verifying hash for {}", partition_name));
-                Some(pb)
-            } else {
-                None
-            };
-            out_file.seek(SeekFrom::Start(0))?;
-            let mut hasher = Sha256::new();
-            io::copy(&mut out_file, &mut hasher)?;
-            let hash = hasher.finalize();
-            if let Some(pb) = hash_pb {
-                if hash.as_slice() != info.hash.as_deref().unwrap_or(&[]) {
-                    pb.finish_with_message(format!("✕ Hash mismatch for {}", partition_name));
-                } else {
-                    pb.finish_with_message(format!("✓ Hash verified for {}", partition_name));
-                }
-            }
-        }
     }
     Ok(())
 }

@@ -17,17 +17,6 @@ use std::io::SeekFrom;
 use std::path::PathBuf;
 use std::time::Duration;
 
-pub fn verify_hash(data: &[u8], expected_hash: &[u8]) -> bool {
-    if expected_hash.is_empty() {
-        return true;
-    }
-    let mut hasher = Sha256::new();
-    hasher.update(data);
-    let hash = hasher.finalize();
-
-    hash.as_slice() == expected_hash
-}
-
 pub fn verify_partitions_hash(
     partitions: &[&PartitionUpdate],
     args: &Args,
