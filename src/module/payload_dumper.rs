@@ -8,6 +8,8 @@ use crate::module::patch::bspatch;
 #[cfg(feature = "differential_ota")]
 use crate::module::verify::verify_old_partition;
 use anyhow::{Result, anyhow};
+#[cfg(feature = "differential_ota")]
+use anyhow::Context;
 use bzip2::read::BzDecoder;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::fs::{self, File};
