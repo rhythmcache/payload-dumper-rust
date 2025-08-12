@@ -10,14 +10,10 @@ use crate::module::verify::verify_old_partition;
 use anyhow::{Result, anyhow};
 use bzip2::read::BzDecoder;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-// #[cfg(feature = "rust-lzma")]
-// use lzma::LzmaReader;
 use std::fs::{self, File};
 use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::time::Duration;
-// #[cfg(not(feature = "rust-lzma"))]
-use xz4rust::{XzDecoder, XzNextBlockResult};
 
 pub fn process_operation(
     operation_index: usize,
@@ -34,71 +30,23 @@ pub fn process_operation(
     payload_file.read_exact(&mut data)?;
 
     match op.r#type() {
-        /*
-        #[cfg(feature = "rust-lzma")]
         install_operation::Type::ReplaceXz => {
-            let mut decompressed = Vec::new();
-            match LzmaReader::new_decompressor(Cursor::new(&data)) {
-                Ok(mut decompressor) => {
-                    if let Err(e) = decompressor.read_to_end(&mut decompressed) {
-                        println!(
-                            "  Warning: Failed to decompress XZ in operation {}.  : {}",
-                            operation_index, e
-                        );
-                        return Ok(());
-                    }
-                    out_file.seek(SeekFrom::Start(
-                        op.dst_extents[0].start_block.unwrap_or(0) * block_size,
-                    ))?;
-                    out_file.write_all(&decompressed)?;
-                }
-                Err(e) => {
-                    println!(
-                        "  Warning: Skipping operation {} due to XZ decompression error.  : {}",
-                        operation_index, e
-                    );
-                    return Ok(());
-                }
-            }
-        }
-
-        #[cfg(not(feature = "rust-lzma"))]
-        */
-        install_operation::Type::ReplaceXz => {
-            let mut decompressed = Vec::new();
-            let mut decoder = XzDecoder::in_heap_with_alloc_dict_size(
-                xz4rust::DICT_SIZE_MIN,
-                xz4rust::DICT_SIZE_MAX,
-            );
-
-            let mut input_position = 0;
-            let mut temp_buffer = [0u8; 4096];
-
-            loop {
-                match decoder.decode(&data[input_position..], &mut temp_buffer) {
-                    Ok(XzNextBlockResult::NeedMoreData(input_consumed, output_produced)) => {
-                        input_position += input_consumed;
-                        decompressed.extend_from_slice(&temp_buffer[..output_produced]);
-                    }
-                    Ok(XzNextBlockResult::EndOfStream(_, output_produced)) => {
-                        decompressed.extend_from_slice(&temp_buffer[..output_produced]);
-                        break;
-                    }
-                    Err(e) => {
-                        println!(
-                            "  Warning: Skipping operation {} due to XZ decompression error: {}",
-                            operation_index, e
-                        );
-                        return Ok(());
-                    }
-                }
-            }
-
+    match liblzma::decode_all(Cursor::new(&data)) {
+        Ok(decompressed) => {
             out_file.seek(SeekFrom::Start(
                 op.dst_extents[0].start_block.unwrap_or(0) * block_size,
             ))?;
             out_file.write_all(&decompressed)?;
         }
+        Err(e) => {
+            println!(
+                "  Warning: Skipping operation {} due to XZ decompression error: {}",
+                operation_index, e
+            );
+            return Ok(());
+        }
+    }
+}
         install_operation::Type::Zstd => match zstd::decode_all(Cursor::new(&data)) {
             Ok(decompressed) => {
                 let mut pos = 0;
