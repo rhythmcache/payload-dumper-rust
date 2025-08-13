@@ -75,6 +75,9 @@ fn main() -> Result<()> {
     main_pb.enable_steady_tick(Duration::from_millis(100));
     let payload_path_str = args.payload_path.to_string_lossy().to_string();
 
+    // Check if we're outputting to stdout
+    let is_stdout = args.out.to_string_lossy() == "-";
+
     // Check if it's a URL - only available with remote_ota feature
     #[cfg(feature = "remote_ota")]
     let is_url =
@@ -107,11 +110,19 @@ fn main() -> Result<()> {
     if !is_url {
         if let Ok(metadata) = fs::metadata(&args.payload_path) {
             if metadata.len() > 1024 * 1024 {
-                println!(
-                    "Processing file: {}, size: {}",
-                    payload_path_str,
-                    format_size(metadata.len())
-                );
+                if is_stdout {
+                    eprintln!(
+                        "Processing file: {}, size: {}",
+                        payload_path_str,
+                        format_size(metadata.len())
+                    );
+                } else {
+                    println!(
+                        "Processing file: {}, size: {}",
+                        payload_path_str,
+                        format_size(metadata.len())
+                    );
+                }
             }
         }
     }
@@ -130,7 +141,11 @@ fn main() -> Result<()> {
                     main_pb.set_message("Connection established");
                     if file_size > 1024 * 1024 && !FILE_SIZE_INFO_SHOWN.swap(true, Ordering::SeqCst)
                     {
-                        println!("- Remote file size: {}", format_size(file_size));
+                        if is_stdout {
+                            eprintln!("- Remote file size: {}", format_size(file_size));
+                        } else {
+                            println!("- Remote file size: {}", format_size(file_size));
+                        }
                     }
                     reader.content_type.clone()
                 } else {
@@ -148,7 +163,11 @@ fn main() -> Result<()> {
                 let file_size = reader.http_reader.content_length;
                 main_pb.set_message("Connection established");
                 if file_size > 1024 * 1024 && !FILE_SIZE_INFO_SHOWN.swap(true, Ordering::SeqCst) {
-                    println!("- Remote ZIP size: {}", format_size(file_size));
+                    if is_stdout {
+                        eprintln!("- Remote ZIP size: {}", format_size(file_size));
+                    } else {
+                        println!("- Remote ZIP size: {}", format_size(file_size));
+                    }
                 }
                 Box::new(reader) as Box<dyn ReadSeek>
             } else {
@@ -157,7 +176,11 @@ fn main() -> Result<()> {
                 let file_size = reader.content_length;
                 main_pb.set_message("Connection established");
                 if file_size > 1024 * 1024 && !FILE_SIZE_INFO_SHOWN.swap(true, Ordering::SeqCst) {
-                    println!("- Remote file size: {}", format_size(file_size));
+                    if is_stdout {
+                        eprintln!("- Remote file size: {}", format_size(file_size));
+                    } else {
+                        println!("- Remote file size: {}", format_size(file_size));
+                    }
                 }
                 Box::new(reader) as Box<dyn ReadSeek>
             }
@@ -232,13 +255,16 @@ fn main() -> Result<()> {
     }
 
     if let Some(security_patch) = &manifest.security_patch_level {
-        println!("- Security Patch: {}", security_patch);
+        if is_stdout {
+            eprintln!("- Security Patch: {}", security_patch);
+        } else {
+            println!("- Security Patch: {}", security_patch);
+        }
     }
 
     #[cfg(feature = "metadata")]
     if args.metadata && !args.list {
         main_pb.set_message("Extracting metadata...");
-        let is_stdout = args.out.to_string_lossy() == "-";
 
         match save_metadata(&manifest, &args.out, data_offset) {
             Ok(json) => {
@@ -266,8 +292,6 @@ fn main() -> Result<()> {
 
         #[cfg(feature = "metadata")]
         if args.metadata {
-            let is_stdout = args.out.to_string_lossy() == "-";
-
             match save_metadata(&manifest, &args.out, data_offset) {
                 Ok(json) => {
                     if is_stdout {
