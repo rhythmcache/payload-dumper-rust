@@ -1,6 +1,6 @@
 use crate::module::http::HttpReader;
 use crate::module::zip::zip_core::ZipParser;
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use std::io::{self, Read, Seek, SeekFrom};
 
 pub struct RemoteZipReader {
@@ -11,47 +11,6 @@ pub struct RemoteZipReader {
 }
 
 impl RemoteZipReader {
-    fn find_payload_via_metadata(http_reader: &mut HttpReader) -> Result<(u64, u64)> {
-        let search_size = std::cmp::min(http_reader.content_length, 131072);
-        http_reader.seek(SeekFrom::End(-(search_size as i64)))?;
-
-        let mut tail_buffer = vec![0u8; search_size as usize];
-        let bytes_read = http_reader.read(&mut tail_buffer)?;
-        tail_buffer.truncate(bytes_read);
-
-        let search_pattern = b"payload.bin";
-        for i in 0..tail_buffer.len().saturating_sub(search_pattern.len()) {
-            if tail_buffer[i..].starts_with(search_pattern) {
-                if let Some(colon_pos) = tail_buffer[i..].iter().position(|&b| b == b':') {
-                    let start = i + colon_pos + 1;
-                    if let Some(end) = tail_buffer[start..]
-                        .iter()
-                        .position(|&b| b == b',' || b == b'\n' || b == b'\r')
-                    {
-                        let metadata_str = std::str::from_utf8(&tail_buffer[start..start + end])
-                            .map_err(|_| anyhow!("Invalid UTF-8 in metadata"))?;
-                        let parts: Vec<&str> = metadata_str.split(':').collect();
-
-                        if parts.len() >= 2 {
-                            if let (Ok(offset), Ok(size)) =
-                                (parts[0].parse::<u64>(), parts[1].parse::<u64>())
-                            {
-                                http_reader.seek(SeekFrom::Start(offset))?;
-                                let mut header = [0u8; 4];
-                                http_reader.read_exact(&mut header)?;
-
-                                if header[0..2] == [0x50, 0x4B] {
-                                    return Ok((offset, size));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        Err(anyhow!("Could not find payload.bin metadata"))
-    }
-
     fn find_payload_via_zip_structure(mut http_reader: HttpReader) -> Result<Self> {
         // Find payload.bin entry using shared ZIP parsing logic
         let entry = ZipParser::find_payload_entry(&mut http_reader)?;
@@ -73,7 +32,6 @@ impl RemoteZipReader {
         })
     }
 
-
     pub fn new_for_parallel(url: String) -> Result<Self> {
         Self::new_for_parallel_with_user_agent(url, None)
     }
@@ -81,32 +39,10 @@ impl RemoteZipReader {
     //  accepts custom user agent
     pub fn new_for_parallel_with_user_agent(url: String, user_agent: Option<&str>) -> Result<Self> {
         let http_reader = HttpReader::new_with_user_agent(url.clone(), user_agent, false)?;
-        if let Ok(payload_info) = Self::find_payload_via_metadata(&mut http_reader.clone()) {
-            return Ok(Self {
-                http_reader,
-                payload_offset: payload_info.0,
-                payload_size: payload_info.1,
-                current_position: 0,
-            });
-        }
         Self::find_payload_via_zip_structure(http_reader)
     }
 }
 
-/*==============================================================================================
-    pub fn new_with_user_agent(url: String, user_agent: Option<&str>) -> Result<Self> {
-        let http_reader = HttpReader::new_with_user_agent(url.clone(), user_agent, true)?;
-        if let Ok(payload_info) = Self::find_payload_via_metadata(&mut http_reader.clone()) {
-            return Ok(Self {
-                http_reader,
-                payload_offset: payload_info.0,
-                payload_size: payload_info.1,
-                current_position: 0,
-            });
-        }
-        Self::find_payload_via_zip_structure(http_reader)
-    }
-================================================================================================*/
 impl Read for RemoteZipReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if self.current_position >= self.payload_size {
