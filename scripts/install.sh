@@ -4,34 +4,138 @@ REPO_OWNER="rhythmcache"
 REPO_NAME="payload-dumper-rust"
 GITHUB_API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
 
+get_yes_no() {
+    local prompt="$1"
+    local response
+    while true; do
+        echo -n "$prompt (y/n): "
+        read -r response
+        case "$response" in
+            [Yy]|[Yy][Ee][Ss])
+                return 0
+                ;;
+            [Nn]|[Nn][Oo])
+                return 1
+                ;;
+            *)
+                echo "Please answer yes (y) or no (n)."
+                ;;
+        esac
+    done
+}
+
+# extract version number from version string
+extract_version() {
+    echo "$1" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1
+}
+
+# Check if payload_dumper is already installed
 if command -v payload_dumper >/dev/null 2>&1; then
-    echo "[!] payload_dumper is already installed at: $(which payload_dumper)"
-    echo "[^] Remove it first if you want to reinstall"
-    exit 0
+    existing_path=$(which payload_dumper)
+    echo "[*] payload_dumper is already installed at: $existing_path"
+    
+    # Get current version
+    current_version_output=$(payload_dumper --version 2>/dev/null)
+    if [ $? -eq 0 ]; then
+        current_version=$(extract_version "$current_version_output")
+        echo "[*] Current version: $current_version"
+        
+        # Get latest release info to compare versions
+        echo "[*] Fetching latest release information..."
+        release_info=$(curl -s "$GITHUB_API_URL")
+        if [ $? -ne 0 ] || [ -z "$release_info" ]; then
+            echo "[!] Failed to fetch release information. Cannot compare versions."
+            if get_yes_no "[?] Do you still want to proceed with installation?"; then
+                echo "[*] Proceeding with installation..."
+            else
+                echo "[*] Installation cancelled."
+                exit 0
+            fi
+        else
+            release_tag=$(echo "$release_info" | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
+            latest_version=$(extract_version "$release_tag")
+            echo "[*] Latest version: $latest_version"
+            
+            if [ "$current_version" = "$latest_version" ]; then
+                echo "[*] You already have the latest version installed."
+                if get_yes_no "[?] Do you still want to reinstall it?"; then
+                    echo "[*] Proceeding with reinstallation..."
+                else
+                    echo "[*] Installation cancelled."
+                    exit 0
+                fi
+            else
+                echo "[*] A newer version is available!"
+                echo "[*] Updating from $current_version to $latest_version..."
+                
+                # Check if we have write permissions to the installation directory
+                install_dir=$(dirname "$existing_path")
+                if [ -w "$install_dir" ]; then
+                    echo "[*] Removing old version..."
+                    if rm -f "$existing_path"; then
+                        echo "[✓] Old version removed successfully"
+                        bin_dir="$install_dir"
+                        update_mode=true
+                    else
+                        echo "[!] Failed to remove old version. You may need elevated permissions."
+                        echo "[*] Will install to default location instead."
+                        update_mode=false
+                    fi
+                else
+                    echo "[!] No write permission to $install_dir"
+                    echo "[*] Will install to default location instead."
+                    update_mode=false
+                fi
+            fi
+        fi
+    else
+        echo "[!] Could not determine current version (--version command failed)"
+        if get_yes_no "[?] Do you want to proceed with installation anyway?"; then
+            echo "[*] Proceeding with installation..."
+        else
+            echo "[*] Installation cancelled."
+            exit 0
+        fi
+    fi
 fi
 
-# Determine system type and architecture
-echo -n "[*] Checking system type... "
-system_type="linux"
-if echo "$PREFIX" | grep -q "com.termux"; then
-    system_type="termux"
-    echo "Termux"
-    arch=$(getprop ro.product.cpu.abi)
-    bin_dir="$PREFIX/bin"
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-    system_type="darwin"
-    echo "macOS"
-    arch=$(uname -m)
-    bin_dir="$HOME/.extra/bin"
-elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "win32" ]] || [[ "$(uname -s)" == MINGW* ]] || [[ "$(uname -s)" == MSYS* ]]; then
-    system_type="windows"
-    echo "Windows"
-    arch=$(uname -m)
-    bin_dir="$HOME/.extra/bin"
+if [ -z "$bin_dir" ]; then
+    echo -n "[*] Checking system type... "
+    system_type="linux"
+    if echo "$PREFIX" | grep -q "com.termux"; then
+        system_type="termux"
+        echo "Termux"
+        arch=$(getprop ro.product.cpu.abi)
+        bin_dir="$PREFIX/bin"
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        system_type="darwin"
+        echo "macOS"
+        arch=$(uname -m)
+        bin_dir="$HOME/.extra/bin"
+    elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "win32" ]] || [[ "$(uname -s)" == MINGW* ]] || [[ "$(uname -s)" == MSYS* ]]; then
+        system_type="windows"
+        echo "Windows"
+        arch=$(uname -m)
+        bin_dir="$HOME/.extra/bin"
+    else
+        echo "Linux"
+        arch=$(uname -m)
+        bin_dir="$HOME/.extra/bin"
+    fi
 else
-    echo "Linux"
-    arch=$(uname -m)
-    bin_dir="$HOME/.extra/bin"
+    if echo "$PREFIX" | grep -q "com.termux"; then
+        system_type="termux"
+        arch=$(getprop ro.product.cpu.abi)
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        system_type="darwin"
+        arch=$(uname -m)
+    elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "win32" ]] || [[ "$(uname -s)" == MINGW* ]] || [[ "$(uname -s)" == MSYS* ]]; then
+        system_type="windows"
+        arch=$(uname -m)
+    else
+        system_type="linux"
+        arch=$(uname -m)
+    fi
 fi
 
 echo "[*] Detected architecture: $arch"
@@ -61,16 +165,20 @@ if [ -z "$asset_pattern" ]; then
     exit 1
 fi
 
-echo "[*] Fetching latest release information..."
-sleep 0.5
 
-release_info=$(curl -s "$GITHUB_API_URL")
-if [ $? -ne 0 ] || [ -z "$release_info" ]; then
-    echo "[✗] Failed to fetch release information"
-    exit 1
+if [ -z "$release_info" ]; then
+    echo "[*] Fetching latest release information..."
+    sleep 0.5
+    
+    release_info=$(curl -s "$GITHUB_API_URL")
+    if [ $? -ne 0 ] || [ -z "$release_info" ]; then
+        echo "[✗] Failed to fetch release information"
+        exit 1
+    fi
+    
+    release_tag=$(echo "$release_info" | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
 fi
 
-release_tag=$(echo "$release_info" | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
 echo "[*] Latest release: $release_tag"
 
 echo "[*] Looking for release matching architecture: $arch ($asset_pattern)"
@@ -119,14 +227,13 @@ echo "[*] Download URL: $download_url"
 temp_dir=$(mktemp -d)
 zip_file="$temp_dir/$asset_name"
 
-# Set binary path with .exe extension for Windows
+
 if [[ "$system_type" == "windows" ]]; then
     bin_path="$bin_dir/payload_dumper.exe"
 else
     bin_path="$bin_dir/payload_dumper"
 fi
 
-# Create bin directory if it doesn't exist
 mkdir -p "$bin_dir"
 
 echo "[*] Downloading release archive..."
@@ -180,17 +287,22 @@ if cp "$binary_file" "$bin_path" && chmod +x "$bin_path"; then
     sleep 0.5
     
     if "$bin_path" --help >/dev/null 2>&1; then
-        if [[ "$system_type" != "termux" ]]; then
-            echo "   Installed package \`payload_dumper $release_tag\` (executable \`$bin_path\`)"
-            if [[ "$system_type" == "windows" ]]; then
-                echo "   Please add the following to your shell configuration file (.bashrc, .zshrc, etc.):"
-                echo "   export PATH=\"\$PATH:$bin_dir\""
-            else
-                echo "   Please add the following to your shell configuration file:"
-                echo "   export PATH=\"\$PATH:$bin_dir\""
-            fi
+        if [ "$update_mode" = true ]; then
+            echo "[✓] Successfully updated payload_dumper to $release_tag"
+            echo "   Updated executable: $bin_path"
         else
-            echo "   Installed package \`payload_dumper $release_tag\` (executable \`payload_dumper\`)"
+            if [[ "$system_type" != "termux" ]]; then
+                echo "   Installed package \`payload_dumper $release_tag\` (executable \`$bin_path\`)"
+                if [[ "$system_type" == "windows" ]]; then
+                    echo "   Please add the following to your shell configuration file (.bashrc, .zshrc, etc.):"
+                    echo "   export PATH=\"\$PATH:$bin_dir\""
+                else
+                    echo "   Please add the following to your shell configuration file:"
+                    echo "   export PATH=\"\$PATH:$bin_dir\""
+                fi
+            else
+                echo "   Installed package \`payload_dumper $release_tag\` (executable \`payload_dumper\`)"
+            fi
         fi
     else
         echo "[✗] Something went wrong. The binary may not be compatible."
