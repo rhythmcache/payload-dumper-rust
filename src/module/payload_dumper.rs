@@ -281,7 +281,7 @@ pub fn process_operation(
         #[cfg(not(feature = "differential_ota"))]
         install_operation::Type::SourceBsdiff
         | install_operation::Type::BrotliBsdiff
-        | install_operation::Type::Lz4DiffBsdiff => {
+        | install_operation::Type::Lz4diffBsdiff => {
             return Err(anyhow!(
                 "Operation {} requires differential_ota feature to be enabled",
                 operation_index
