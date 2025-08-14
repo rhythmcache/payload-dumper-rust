@@ -393,7 +393,7 @@ pub fn dump_partition(
     }
     if let Some(pb) = progress_bar {
         pb.finish_with_message(format!(
-            "✅ Completed {} ({} ops)",
+            "✓ Completed {} ({} ops)",
             partition_name, total_ops
         ));
     }
