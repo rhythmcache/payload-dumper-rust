@@ -7,7 +7,7 @@ jobs:
   build:
     strategy:
       matrix:
-        architecture: [x86_64, i686, aarch64]
+        architecture: [x86_64, i686]
       fail-fast: false
 
     runs-on: windows-latest
