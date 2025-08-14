@@ -25,6 +25,7 @@ pub fn process_operation(
     block_size: u64,
     payload_file: &mut (impl Read + Seek),
     out_file: &mut (impl Write + Seek),
+    #[allow(unused_variables)]
     old_file: Option<&mut dyn ReadSeek>,
 ) -> Result<()> {
     payload_file.seek(SeekFrom::Start(data_offset + op.data_offset.unwrap_or(0)))?;
@@ -102,16 +103,25 @@ pub fn process_operation(
             out_file.write_all(&data)?;
         }
         install_operation::Type::SourceCopy => {
-            let old_file =
-                old_file.ok_or_else(|| anyhow!("SOURCE_COPY requires an old file to copy from"))?;
-            out_file.seek(SeekFrom::Start(
-                op.dst_extents[0].start_block.unwrap_or(0) * block_size,
-            ))?;
-            for ext in &op.src_extents {
-                old_file.seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
-                let mut buffer = vec![0u8; (ext.num_blocks.unwrap_or(0) * block_size) as usize];
-                old_file.read_exact(&mut buffer)?;
-                out_file.write_all(&buffer)?;
+            #[cfg(feature = "differential_ota")]
+            {
+                let old_file = old_file.ok_or_else(|| anyhow!("SOURCE_COPY requires an old file to copy from"))?;
+                out_file.seek(SeekFrom::Start(
+                    op.dst_extents[0].start_block.unwrap_or(0) * block_size,
+                ))?;
+                for ext in &op.src_extents {
+                    old_file.seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
+                    let mut buffer = vec![0u8; (ext.num_blocks.unwrap_or(0) * block_size) as usize];
+                    old_file.read_exact(&mut buffer)?;
+                    out_file.write_all(&buffer)?;
+                }
+            }
+            #[cfg(not(feature = "differential_ota"))]
+            {
+                return Err(anyhow!(
+                    "Operation {} (SOURCE_COPY) requires differential_ota feature to be enabled",
+                    operation_index
+                ));
             }
         }
         #[cfg(feature = "differential_ota")]
@@ -365,35 +375,6 @@ pub fn dump_partition(
     #[cfg(not(feature = "differential_ota"))]
     let mut old_file: Option<File> = None;
 
-    // For SOURCE_COPY without differential_ota, we might still need old_file
-    // This is a simple check to see if any operation needs it
-    let _needs_old_file = partition
-        .operations
-        .iter()
-        .any(|op| matches!(op.r#type(), install_operation::Type::SourceCopy));
-
-    #[cfg(not(feature = "differential_ota"))]
-    let mut old_file = if _needs_old_file && old_file.is_none() {
-        // Try to open old file for SOURCE_COPY operations
-        if let Some(old_dir) = args.old.as_ref() {
-            let old_path = old_dir.join(format!("{}.img", partition_name));
-            match File::open(&old_path) {
-                Ok(file) => Some(file),
-                Err(_) => {
-                    println!(
-                        "Warning: Could not open old file for SOURCE_COPY operation: {:?}",
-                        old_path
-                    );
-                    None
-                }
-            }
-        } else {
-            None
-        }
-    } else {
-        old_file
-    };
-
     for (i, op) in partition.operations.iter().enumerate() {
         process_operation(
             i,
@@ -412,7 +393,7 @@ pub fn dump_partition(
     }
     if let Some(pb) = progress_bar {
         pb.finish_with_message(format!(
-            "✓ Completed {} ({} ops)",
+            "✅ Completed {} ({} ops)",
             partition_name, total_ops
         ));
     }
