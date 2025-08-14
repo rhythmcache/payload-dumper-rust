@@ -1,4 +1,4 @@
-name: Windows Builds
+name: Windows aarch64 mingw Build
 
 on:
   workflow_dispatch:
