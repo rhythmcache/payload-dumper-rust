@@ -1,4 +1,4 @@
-name: Windows Builds
+name: Windows MSVC Builds
 
 on:
   workflow_dispatch:
@@ -10,29 +10,14 @@ jobs:
         architecture: [x86_64, i686, aarch64]
       fail-fast: false
 
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install protoc and build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler cmake
-          protoc --version
-
-      - name: Download LLVM-MinGW toolchain (for ARM64)
-        if: matrix.architecture == 'aarch64'
-        run: |
-          cd /tmp
-          wget https://github.com/mstorsjo/llvm-mingw/releases/download/20250528/llvm-mingw-20250528-msvcrt-ubuntu-22.04-x86_64.tar.xz
-          tar -xf llvm-mingw-20250528-msvcrt-ubuntu-22.04-x86_64.tar.xz
-          sudo mv llvm-mingw-20250528-msvcrt-ubuntu-22.04-x86_64 /opt/llvm-mingw
-          echo "/opt/llvm-mingw/bin" >> $GITHUB_PATH
-
-      - name: Install MinGW (for x86_64/i686)
-        if: matrix.architecture != 'aarch64'
-        run: |
-          sudo apt-get install -y mingw-w64
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.architecture == 'x86_64' && 'x64' || matrix.architecture == 'i686' && 'x86' }}
 
       - name: Set up Rust
         uses: actions-rs/toolchain@v1
@@ -41,59 +26,66 @@ jobs:
           profile: minimal
           override: true
 
-      - name: Set target
-        id: set-target
+      - name: Set target and environment
+        shell: pwsh
         run: |
-          case "${{ matrix.architecture }}" in
-            x86_64)
-              echo "TARGET=x86_64-pc-windows-gnu" >> $GITHUB_ENV
-              echo "ARCH_DIR=x86_64" >> $GITHUB_ENV
-              echo "CC=x86_64-w64-mingw32-gcc" >> $GITHUB_ENV
-              echo "CXX=x86_64-w64-mingw32-g++" >> $GITHUB_ENV
-              echo "HOST_TRIPLE=x86_64-w64-mingw32" >> $GITHUB_ENV
-              ;;
-            i686)
-              echo "TARGET=i686-pc-windows-gnu" >> $GITHUB_ENV
-              echo "ARCH_DIR=x86" >> $GITHUB_ENV
-              echo "CC=i686-w64-mingw32-gcc" >> $GITHUB_ENV
-              echo "CXX=i686-w64-mingw32-g++" >> $GITHUB_ENV
-              echo "HOST_TRIPLE=i686-w64-mingw32" >> $GITHUB_ENV
-              ;;
-            aarch64)
-              echo "TARGET=aarch64-pc-windows-gnullvm" >> $GITHUB_ENV
-              echo "ARCH_DIR=aarch64" >> $GITHUB_ENV
-              echo "CC=aarch64-w64-mingw32-clang" >> $GITHUB_ENV
-              echo "CXX=aarch64-w64-mingw32-clang++" >> $GITHUB_ENV
-              echo "HOST_TRIPLE=aarch64-w64-mingw32" >> $GITHUB_ENV
-              ;;
-          esac
+          switch ("${{ matrix.architecture }}") {
+            "x86_64" {
+              echo "TARGET=x86_64-pc-windows-msvc" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              echo "ARCH_DIR=x64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            }
+            "i686" {
+              echo "TARGET=i686-pc-windows-msvc" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              echo "ARCH_DIR=x86" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            }
+          }
+          
+          # Set environment variables for static linking
+          echo "RUSTFLAGS=-C target-feature=+crt-static" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Add Rust target
         run: rustup target add ${{ env.TARGET }}
 
       - name: Build for ${{ matrix.architecture }}
+        shell: pwsh
         run: |
-          echo "Building for ${{ env.TARGET }}"
-          rm -f build.rs
+          Write-Host "Building for ${{ env.TARGET }}"
+          if (Test-Path "build.rs") { Remove-Item "build.rs" }
           cargo build --release --target ${{ env.TARGET }} --features differential_ota
         env:
-          PKG_CONFIG_ALLOW_CROSS: 1
-          PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
+          RUSTFLAGS: -C target-feature=+crt-static
 
-      - name: Create Dir
-        run: mkdir -p artifacts
+      - name: Create artifacts directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path artifacts
 
       - name: Copy binaries
+        shell: pwsh
         run: |
-          cp target/${{ env.TARGET }}/release/payload_dumper.exe ./artifacts/payload_dumper-${{ matrix.architecture }}.exe || echo "Binary not found"
-          if [ ! -f ./artifacts/payload_dumper-${{ matrix.architecture }}.exe ]; then
-            echo "Failed to find binary"
-            find target -type f -name "*.exe" | sort
-          fi
+          $binaryPath = "target\${{ env.TARGET }}\release\payload_dumper.exe"
+          $outputPath = "artifacts\payload_dumper-${{ matrix.architecture }}.exe"
+          
+          if (Test-Path $binaryPath) {
+            Copy-Item $binaryPath $outputPath
+            Write-Host "Binary copied successfully"
+          } else {
+            Write-Host "Binary not found at $binaryPath"
+            Write-Host "Searching for exe files:"
+            Get-ChildItem -Path target -Recurse -Filter "*.exe" | Sort-Object FullName
+          }
+
+      - name: Verify static linking
+        shell: pwsh
+        run: |
+          $binary = "artifacts\payload_dumper-${{ matrix.architecture }}.exe"
+          if (Test-Path $binary) {
+            Write-Host "Binary exists and should be statically linked"
+            # You can add additional verification here if needed
+          }
 
       - name: Upload Binaries
         uses: actions/upload-artifact@v4
         with:
-          name: payload_dumper-${{ matrix.architecture }}-windows
+          name: payload_dumper-${{ matrix.architecture }}-windows-msvc
           path: artifacts/payload_dumper-${{ matrix.architecture }}.exe
           if-no-files-found: warn

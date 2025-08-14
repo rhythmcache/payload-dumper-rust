@@ -38,7 +38,7 @@ jobs:
               ;;
             aarch64)
               echo "TARGET=aarch64-unknown-linux-musl" >> $GITHUB_ENV
-              echo "TOOLCHAIN_URL=https://github.com/f33a6a/random-repo/releases/download/Mirror/aarch64-linux-musl-cross.tgz" >> $GITHUB_ENV
+              echo "TOOLCHAIN_URL=" >> $GITHUB_ENV
               echo "CC=aarch64-linux-musl-gcc" >> $GITHUB_ENV
               echo "ARCH_DIR=aarch64" >> $GITHUB_ENV
               echo "NEED_CROSS=true" >> $GITHUB_ENV
@@ -46,7 +46,7 @@ jobs:
               ;;
             armv7)
               echo "TARGET=armv7-unknown-linux-musleabihf" >> $GITHUB_ENV
-              echo "TOOLCHAIN_URL=https://github.com/f33a6a/random-repo/releases/download/Mirror/armv7l-linux-musleabihf-cross.tgz" >> $GITHUB_ENV
+              echo "TOOLCHAIN_URL=" >> $GITHUB_ENV
               echo "CC=armv7l-linux-musleabihf-gcc" >> $GITHUB_ENV
               echo "ARCH_DIR=armv7" >> $GITHUB_ENV
               echo "NEED_CROSS=true" >> $GITHUB_ENV
@@ -54,7 +54,7 @@ jobs:
               ;;
             i686)
               echo "TARGET=i686-unknown-linux-musl" >> $GITHUB_ENV
-              echo "TOOLCHAIN_URL=https://github.com/f33a6a/random-repo/releases/download/Mirror/i686-linux-musl-cross.tgz" >> $GITHUB_ENV
+              echo "TOOLCHAIN_URL=" >> $GITHUB_ENV
               echo "CC=i686-linux-musl-gcc" >> $GITHUB_ENV
               echo "ARCH_DIR=x86" >> $GITHUB_ENV
               echo "NEED_CROSS=true" >> $GITHUB_ENV
@@ -62,7 +62,7 @@ jobs:
               ;;
             riscv64)
               echo "TARGET=riscv64gc-unknown-linux-musl" >> $GITHUB_ENV
-              echo "TOOLCHAIN_URL=https://github.com/f33a6a/random-repo/releases/download/Mirror/riscv64-linux-musl-cross.tgz" >> $GITHUB_ENV
+              echo "TOOLCHAIN_URL=" >> $GITHUB_ENV
               echo "CC=riscv64-linux-musl-gcc" >> $GITHUB_ENV
               echo "ARCH_DIR=riscv64" >> $GITHUB_ENV
               echo "NEED_CROSS=true" >> $GITHUB_ENV
@@ -102,160 +102,6 @@ jobs:
           [target.${{ env.TARGET }}]
           linker = "${{ env.CC }}"
           EOF
-          cat .cargo/config.toml
-
-      #- name: Prepare library directories
-       # run: |
-        #  mkdir -p $PWD/lib/musl/${{ env.ARCH_DIR }}
-         # mkdir -p $PWD/lib/musl/${{ env.ARCH_DIR }}/include
-          #mkdir -p $PWD/lib/musl/${{ env.ARCH_DIR }}/lib
-          #kdir -p $PWD/lib/musl/${{ env.ARCH_DIR }}/pkgconfig
-          #echo "INSTALL_PREFIX=$PWD/lib/musl/${{ env.ARCH_DIR }}" >> $GITHUB_ENV
-          #echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
-          #echo "PKG_CONFIG_PATH=$PWD/lib/musl/${{ env.ARCH_DIR }}/lib/pkgconfig" >> $GITHUB_ENV
-          #echo "CFLAGS=-I$PWD/lib/musl/${{ env.ARCH_DIR }}/include" >> $GITHUB_ENV
-          #echo "LDFLAGS=-L$PWD/lib/musl/${{ env.ARCH_DIR }}/lib" >> $GITHUB_ENV
-
-      #- name: Build zlib
-       # run: |
-        #  cd /tmp
-         # wget https://zlib.net/zlib-1.3.1.tar.gz
-          #tar -xzf zlib-1.3.1.tar.gz
-         # cd zlib-1.3.1
-          
-          #if [ "${{ env.NEED_CROSS }}" = "true" ]; then
-           # echo "Cross-compiling zlib with ${{ env.CC }}"
-            #./configure --prefix=${{ env.INSTALL_PREFIX }} --static
-          #else
-           # ./configure --prefix=${{ env.INSTALL_PREFIX }} --static
-          #fi
-          
-          #make -j$(nproc)
-          #make install
-          
-          ## Verify installation
-          #ls -la ${{ env.INSTALL_PREFIX }}/lib/libz.a || echo "Failed to build libz.a"
-          
-          # Create pkgconfig file if needed
-          #mkdir -p ${{ env.INSTALL_PREFIX }}/lib/pkgconfig
-          #cat > ${{ env.INSTALL_PREFIX }}/lib/pkgconfig/zlib.pc << EOF
-          #prefix=${{ env.INSTALL_PREFIX }}
-          #exec_prefix=\${prefix}
-          #libdir=\${exec_prefix}/lib
-          #includedir=\${prefix}/include
-          
-          #Name: zlib
-          #Description: zlib compression library
-          #Version: 1.3.1
-          
-          #Requires:
-          #Libs: -L\${libdir} -lz
-          #Cflags: -I\${includedir}
-          #EOF
-        #env:
-         # CC: ${{ env.CC }}
-         # CFLAGS: -fPIC ${{ env.CFLAGS }}
-
-      # run: |
-       #   cd /tmp
-        #  wget https://github.com/tukaani-project/xz/releases/download/v5.8.1/xz-5.8.1.tar.gz
-         # tar -xzf xz-5.8.1.tar.gz
-          #cd xz-5.8.1
-          
-          #if [ "${{ env.NEED_CROSS }}" = "true" ]; then
-           # echo "Cross-compiling liblzma with ${{ env.CC }}"
-            #./configure --prefix=${{ env.INSTALL_PREFIX }} --disable-shared --enable-static --disable-nls --disable-xz --disable-xzdec --disable-lzmadec --disable-lzmainfo --host=${{ env.HOST_TRIPLE }}
-         # else
-          #  ./configure --prefix=${{ env.INSTALL_PREFIX }} --disable-shared --enable-static --disable-nls --disable-xz --disable-xzdec --disable-lzmadec --disable-lzmainfo
-          #fi
-          
-          #make -j$(nproc)
-          #make install
-          
-          # Verify installation
-          #ls -la ${{ env.INSTALL_PREFIX }}/lib/liblzma.a || echo "Failed to build liblzma.a"
-        #env:
-        #  CC: ${{ env.CC }}
-         # CFLAGS: -fPIC ${{ env.CFLAGS }}
-          #LDFLAGS: ${{ env.LDFLAGS }}
-
-      #- name: Build libzip
-       # run: |
-        #  cd /tmp
-         # wget https://libzip.org/download/libzip-1.11.4.tar.xz
-          #tar -xf libzip-1.11.4.tar.xz
-          #cd libzip-1.11.4
-          #mkdir build && cd build
-          
-          #if [ "${{ env.NEED_CROSS }}" = "true" ]; then
-           # echo "Cross-compiling libzip with ${{ env.CC }}"
-            
-            # Create toolchain file for cross-compilation
-            #cat > cross-toolchain.cmake << EOF
-          #set(CMAKE_SYSTEM_NAME Linux)
-          #set(CMAKE_C_COMPILER ${{ env.CC }})
-          #set(CMAKE_CXX_COMPILER ${{ env.CXX }})
-          #set(CMAKE_SYSTEM_PROCESSOR ${{ matrix.architecture }})
-          #set(CMAKE_FIND_ROOT_PATH ${{ env.INSTALL_PREFIX }})
-          #set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-          #set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-          #set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-          #EOF
-            
-           # cmake .. \
-            #  -DCMAKE_TOOLCHAIN_FILE=cross-toolchain.cmake \
-             # -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_PREFIX }} \
-              #-DBUILD_SHARED_LIBS=OFF \
-              #-DBUILD_EXAMPLES=OFF \
-              #-DBUILD_DOC=OFF \
-              #-DBUILD_TOOLS=OFF \
-              #-DBUILD_REGRESS=OFF \
-              #-DENABLE_COMMONCRYPTO=OFF \
-              #-DENABLE_GNUTLS=OFF \
-              #-DENABLE_MBEDTLS=OFF \
-              #-DENABLE_OPENSSL=OFF \
-              #-DENABLE_WINDOWS_CRYPTO=OFF \
-              #-DENABLE_BZIP2=OFF \
-              #-DZLIB_INCLUDE_DIR=${{ env.INSTALL_PREFIX }}/include \
-              #-DZLIB_LIBRARY=${{ env.INSTALL_PREFIX }}/lib/libz.a
-          #else
-           # cmake .. \
-            #  -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_PREFIX }} \
-             # -DBUILD_SHARED_LIBS=OFF \
-             # -DBUILD_EXAMPLES=OFF \
-             # -DBUILD_DOC=OFF \
-             # -DBUILD_TOOLS=OFF \
-             # -DBUILD_REGRESS=OFF \
-             # -DENABLE_COMMONCRYPTO=OFF \
-             # -DENABLE_GNUTLS=OFF \
-             #-DENABLE_MBEDTLS=OFF \
-              #-DENABLE_OPENSSL=OFF \
-              #-DENABLE_WINDOWS_CRYPTO=OFF \
-              #-DENABLE_BZIP2=OFF \
-              #-DZLIB_INCLUDE_DIR=${{ env.INSTALL_PREFIX }}/include \
-              #-DZLIB_LIBRARY=${{ env.INSTALL_PREFIX }}/lib/libz.a
-          #fi
-          
-          #cmake --build . -j$(nproc)
-          #cmake --install .
-          
-          # Verify installation
-          #ls -la ${{ env.INSTALL_PREFIX }}/lib/libzip.a || echo "Failed to build libzip.a"
-        #env:
-         # CC: ${{ env.CC }}
-          #CXX: ${{ env.CXX }}
-         # PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
-          #CFLAGS: -fPIC ${{ env.CFLAGS }}
-          #LDFLAGS: ${{ env.LDFLAGS }}
-
-      #- name: Verify libraries
-       # run: |
-        #  echo "Checking library directories:"
-         # ls -la ${{ env.INSTALL_PREFIX }}/lib/ || echo "No lib directory found"
-          #echo "Static libraries:"
-          #find ${{ env.INSTALL_PREFIX }}/lib -name "*.a" || echo "No static libraries found"
-          #echo "PKG config files:"
-          #find ${{ env.INSTALL_PREFIX }}/lib -name "*.pc" || echo "No pkg-config files found"
 
       - name: Build for ${{ matrix.architecture }}
         run: |
