@@ -12,7 +12,8 @@ pub struct RemoteZipReader {
 
 impl RemoteZipReader {
     fn find_payload_via_zip_structure(mut http_reader: HttpReader) -> Result<Self> {
-        // Find payload.bin entry using shared ZIP parsing logic
+        // Use the traditional ZIP parsing methods for remote readers
+        // (memory mapping is not available for HTTP streams)
         let entry = ZipParser::find_payload_entry(&mut http_reader)?;
 
         // Calculate data offset
@@ -36,7 +37,7 @@ impl RemoteZipReader {
         Self::new_for_parallel_with_user_agent(url, None)
     }
 
-    //  accepts custom user agent
+    // Accepts custom user agent
     pub fn new_for_parallel_with_user_agent(url: String, user_agent: Option<&str>) -> Result<Self> {
         let http_reader = HttpReader::new_with_user_agent(url.clone(), user_agent, false)?;
         Self::find_payload_via_zip_structure(http_reader)
@@ -75,14 +76,14 @@ impl Seek for RemoteZipReader {
                 if offset >= 0 {
                     self.current_position.saturating_add(offset as u64)
                 } else {
-                    self.current_position.saturating_sub(offset.abs() as u64)
+                    self.current_position.saturating_sub(offset.unsigned_abs())
                 }
             }
             SeekFrom::End(offset) => {
                 if offset >= 0 {
                     self.payload_size.saturating_add(offset as u64)
                 } else {
-                    self.payload_size.saturating_sub(offset.abs() as u64)
+                    self.payload_size.saturating_sub(offset.unsigned_abs())
                 }
             }
         };
@@ -101,3 +102,11 @@ impl Seek for RemoteZipReader {
         Ok(self.current_position)
     }
 }
+
+// Note: RemoteZipReader does not implement AdvancedReader because:
+// 1. HTTP streams cannot be memory-mapped
+// 2. get_slice() is not meaningful for network streams
+// 3. It already has its own optimized read_at() implementation via HttpReader
+//
+// This keeps remote functionality working exactly as before while allowing
+// local ZIP files to benefit from memory mapping optimizations.
