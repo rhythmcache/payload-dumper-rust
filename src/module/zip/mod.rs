@@ -1,4 +1,6 @@
 #[cfg(feature = "local_zip")]
+pub mod advanced_reader;
+#[cfg(feature = "local_zip")]
 pub mod local_zip;
 
 #[cfg(feature = "remote_ota")]

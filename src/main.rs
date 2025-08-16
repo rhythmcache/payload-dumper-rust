@@ -4,12 +4,12 @@ use crate::module::args::Args;
 use crate::module::http::HttpReader;
 #[cfg(feature = "metadata")]
 use crate::module::metadata::save_metadata;
-use crate::module::payload_dumper::{create_payload_reader, dump_partition};
+use crate::module::payload_dumper::{PayloadSource, create_payload_reader, dump_partition};
 use crate::module::utils::list_partitions;
 use crate::module::utils::{format_elapsed_time, format_size, is_differential_ota};
 use crate::module::verify::verify_partitions_hash;
 #[cfg(feature = "local_zip")]
-use crate::module::zip::local_zip::ZipPayloadReader;
+use crate::module::zip::local_zip::OptimizedZipPayloadReader;
 #[cfg(feature = "remote_ota")]
 use crate::module::zip::remote_zip::RemoteZipReader;
 use anyhow::{Result, anyhow};
@@ -37,8 +37,8 @@ lazy_static! {
 
 include!("proto/update_metadata.rs");
 
-trait ReadSeek: Read + Seek {}
-impl<T: Read + Seek> ReadSeek for T {}
+trait ReadSeek: Read + Seek + Send {}
+impl<T: Read + Seek + Send> ReadSeek for T {}
 
 fn main() -> Result<()> {
     let args = Args::parse();
@@ -104,6 +104,18 @@ fn main() -> Result<()> {
             "Local ZIP file support requires the 'local_zip' feature to be enabled. Please recompile with --features local_zip"
         ));
     }
+
+    let payload_source = if is_url {
+        if payload_path_str.ends_with(".zip") {
+            PayloadSource::RemoteZip
+        } else {
+            PayloadSource::RemoteHttp
+        }
+    } else if is_local_zip {
+        PayloadSource::LocalZip
+    } else {
+        PayloadSource::LocalFile
+    };
 
     main_pb.set_message("Opening file...");
 
@@ -195,7 +207,7 @@ fn main() -> Result<()> {
     } else if is_local_zip {
         #[cfg(feature = "local_zip")]
         {
-            ZipPayloadReader::<std::fs::File>::from_file(&args.payload_path)
+            OptimizedZipPayloadReader::from_file(&args.payload_path)
                 .map_err(|e| anyhow::anyhow!("Failed to open ZIP file: {}", e))
                 .map(|reader| Box::new(reader) as Box<dyn ReadSeek>)?
         }
@@ -398,43 +410,42 @@ fn main() -> Result<()> {
                                 active_readers.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                             }
 
-                            let reader_result =
-                                if is_url {
-                                    #[cfg(feature = "remote_ota")]
-                                    {
-                                        RemoteZipReader::new_for_parallel_with_user_agent(
-                                            (*payload_url).clone(),
-                                            args.user_agent.as_deref(),
-                                        )
-                                        .map(|reader| Box::new(reader) as Box<dyn ReadSeek>)
-                                    }
-                                    #[cfg(not(feature = "remote_ota"))]
-                                    {
-                                        Err(anyhow!("Remote OTA feature not enabled"))
-                                    }
-                                } else if is_local_zip {
-                                    #[cfg(feature = "local_zip")]
-                                    {
-                                        let result = ZipPayloadReader::new_for_parallel(
-                                            (*payload_path).clone(),
-                                        )
-                                        .map(|reader| Box::new(reader) as Box<dyn ReadSeek>)
-                                        .map_err(|e| {
-                                            anyhow::anyhow!("Failed to create ZIP reader: {}", e)
-                                        }); // Convert io::Error to anyhow::Error
-                                        active_readers
-                                            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-                                        result
-                                    }
-                                    #[cfg(not(feature = "local_zip"))]
-                                    {
-                                        Err(anyhow!("Local ZIP feature not enabled"))
-                                    }
-                                } else {
-                                    create_payload_reader(&args.payload_path).map_err(|e| {
-                                        anyhow::anyhow!("Failed to create payload reader: {}", e)
-                                    })
-                                };
+                            let reader_result = if is_url {
+                                #[cfg(feature = "remote_ota")]
+                                {
+                                    RemoteZipReader::new_for_parallel_with_user_agent(
+                                        (*payload_url).clone(),
+                                        args.user_agent.as_deref(),
+                                    )
+                                    .map(|reader| Box::new(reader) as Box<dyn ReadSeek>)
+                                }
+                                #[cfg(not(feature = "remote_ota"))]
+                                {
+                                    Err(anyhow!("Remote OTA feature not enabled"))
+                                }
+                            } else if is_local_zip {
+                                #[cfg(feature = "local_zip")]
+                                {
+                                    let result = OptimizedZipPayloadReader::from_file(
+                                        (*payload_path).clone(),
+                                    )
+                                    .map(|reader| Box::new(reader) as Box<dyn ReadSeek>)
+                                    .map_err(|e| {
+                                        anyhow::anyhow!("Failed to create ZIP reader: {}", e)
+                                    }); // Convert io::Error to anyhow::Error
+                                    active_readers
+                                        .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                                    result
+                                }
+                                #[cfg(not(feature = "local_zip"))]
+                                {
+                                    Err(anyhow!("Local ZIP feature not enabled"))
+                                }
+                            } else {
+                                create_payload_reader(&args.payload_path).map_err(|e| {
+                                    anyhow::anyhow!("Failed to create payload reader: {}", e)
+                                })
+                            };
 
                             let mut reader = match reader_result {
                                 Ok(reader) => reader,
@@ -454,6 +465,7 @@ fn main() -> Result<()> {
                                 &args,
                                 &mut reader,
                                 Some(&multi_progress),
+                                payload_source,
                             ) {
                                 Ok(()) => Some(Ok(())),
                                 Err(e) => {
@@ -511,6 +523,7 @@ fn main() -> Result<()> {
                     &args,
                     &mut reader,
                     Some(&multi_progress),
+                    payload_source,
                 ) {
                     eprintln!(
                         "Failed to process partition {} in sequential mode: {}",
@@ -530,6 +543,7 @@ fn main() -> Result<()> {
                 &args,
                 &mut payload_reader,
                 Some(&multi_progress),
+                payload_source,
             ) {
                 eprintln!(
                     "Failed to process partition {}: {}",

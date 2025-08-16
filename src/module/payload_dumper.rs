@@ -17,28 +17,322 @@ use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 
+// Enum to track the payload source type
+#[derive(Clone, Copy, Debug)]
+pub enum PayloadSource {
+    LocalFile,
+    RemoteHttp,
+    LocalZip,
+    RemoteZip,
+}
 
-pub fn process_operation(
+impl PayloadSource {
+    pub fn should_use_buffered_approach(&self) -> bool {
+        match self {
+            PayloadSource::LocalFile => false, // Use streaming for local files
+            PayloadSource::RemoteHttp => true, // Use buffered for HTTP
+            PayloadSource::LocalZip => false,  // Use streaming for local ZIP
+            PayloadSource::RemoteZip => true,  // Use buffered for remote ZIP
+        }
+    }
+}
+
+// Streaming approach - good for local files
+pub fn process_operation_streaming(
     operation_index: usize,
     op: &InstallOperation,
     data_offset: u64,
     block_size: u64,
     payload_file: &mut (impl Read + Seek),
     out_file: &mut (impl Write + Seek),
-    #[allow(unused_variables)]
-    old_file: Option<&mut dyn ReadSeek>,
+    #[allow(unused_variables)] old_file: Option<&mut dyn ReadSeek>,
 ) -> Result<()> {
+    if op.dst_extents.is_empty() {
+        return Err(anyhow!(
+            "Invalid operation.dst_extents for operation {}",
+            operation_index
+        ));
+    }
+
+    let dst_extent = &op.dst_extents[0];
+    let data_length = op.data_length.unwrap_or(0);
+    let expected_uncompressed_size = dst_extent.num_blocks.unwrap_or(0) * block_size;
+
+    // Seek to the data position in payload file
+    payload_file.seek(SeekFrom::Start(data_offset + op.data_offset.unwrap_or(0)))?;
+
+    // Seek to the output position
+    out_file.seek(SeekFrom::Start(
+        dst_extent.start_block.unwrap_or(0) * block_size,
+    ))?;
+
+    // Create a limited reader for the operation data
+    let mut limited_reader = payload_file.take(data_length);
+
+    match op.r#type() {
+        install_operation::Type::Replace => {
+            let bytes_written = io::copy(&mut limited_reader, out_file)?;
+            if bytes_written != expected_uncompressed_size {
+                return Err(anyhow!(
+                    "Verify failed (Unexpected bytes written): operation {} ({} != {})",
+                    operation_index,
+                    bytes_written,
+                    expected_uncompressed_size
+                ));
+            }
+        }
+
+        install_operation::Type::ReplaceXz => {
+            let mut xz_decoder = liblzma::read::XzDecoder::new(limited_reader);
+            match io::copy(&mut xz_decoder, out_file) {
+                Ok(bytes_written) => {
+                    if bytes_written != expected_uncompressed_size {
+                        return Err(anyhow!(
+                            "Verify failed (Unexpected bytes written): operation {} ({} != {})",
+                            operation_index,
+                            bytes_written,
+                            expected_uncompressed_size
+                        ));
+                    }
+                }
+                Err(e) => {
+                    println!(
+                        "  Warning: Skipping operation {} due to XZ decompression error: {}",
+                        operation_index, e
+                    );
+                    return Ok(());
+                }
+            }
+        }
+
+        install_operation::Type::ReplaceBz => {
+            let mut bz_decoder = BzDecoder::new(limited_reader);
+            match io::copy(&mut bz_decoder, out_file) {
+                Ok(bytes_written) => {
+                    if bytes_written != expected_uncompressed_size {
+                        return Err(anyhow!(
+                            "Verify failed (Unexpected bytes written): operation {} ({} != {})",
+                            operation_index,
+                            bytes_written,
+                            expected_uncompressed_size
+                        ));
+                    }
+                }
+                Err(e) => {
+                    println!(
+                        "  Warning: Skipping operation {} due to BZ2 decompression error: {}",
+                        operation_index, e
+                    );
+                    return Ok(());
+                }
+            }
+        }
+
+        install_operation::Type::Zstd => match zstd::Decoder::new(limited_reader) {
+            Ok(mut zstd_decoder) => match io::copy(&mut zstd_decoder, out_file) {
+                Ok(bytes_written) => {
+                    if bytes_written != expected_uncompressed_size {
+                        return Err(anyhow!(
+                            "Verify failed (Unexpected bytes written): operation {} ({} != {})",
+                            operation_index,
+                            bytes_written,
+                            expected_uncompressed_size
+                        ));
+                    }
+                }
+                Err(e) => {
+                    println!(
+                        "  Warning: Skipping operation {} due to ZSTD decompression error: {}",
+                        operation_index, e
+                    );
+                    return Ok(());
+                }
+            },
+            Err(e) => {
+                println!(
+                    "  Warning: Skipping operation {} due to ZSTD decoder creation error: {}",
+                    operation_index, e
+                );
+                return Ok(());
+            }
+        },
+
+        install_operation::Type::Zero => {
+            let zero_reader = io::repeat(0).take(expected_uncompressed_size);
+            let bytes_written =
+                io::copy(&mut zero_reader.take(expected_uncompressed_size), out_file)?;
+            if bytes_written != expected_uncompressed_size {
+                return Err(anyhow!(
+                    "Verify failed (Unexpected bytes written): operation {} ({} != {})",
+                    operation_index,
+                    bytes_written,
+                    expected_uncompressed_size
+                ));
+            }
+        }
+
+        install_operation::Type::SourceCopy => {
+            #[cfg(feature = "differential_ota")]
+            {
+                let old_file = old_file
+                    .ok_or_else(|| anyhow!("SOURCE_COPY requires an old file to copy from"))?;
+                for ext in &op.src_extents {
+                    old_file.seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
+                    let mut limited_old_reader =
+                        old_file.take(ext.num_blocks.unwrap_or(0) * block_size);
+                    io::copy(&mut limited_old_reader, out_file)?;
+                }
+            }
+            #[cfg(not(feature = "differential_ota"))]
+            {
+                return Err(anyhow!(
+                    "Operation {} (SOURCE_COPY) requires differential_ota feature to be enabled",
+                    operation_index
+                ));
+            }
+        }
+
+        #[cfg(feature = "differential_ota")]
+        install_operation::Type::SourceBsdiff => {
+            let old_file = old_file
+                .ok_or_else(|| anyhow!("SOURCE_BSDIFF requires differential OTA support"))?;
+
+            // Read patch data into memory (streaming not practical for bsdiff)
+            let mut patch_data = Vec::new();
+            limited_reader.read_to_end(&mut patch_data)?;
+
+            let mut old_data = Vec::new();
+            for ext in &op.src_extents {
+                old_file.seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
+                let mut buffer = vec![0u8; (ext.num_blocks.unwrap_or(0) * block_size) as usize];
+                old_file.read_exact(&mut buffer)?;
+                old_data.extend_from_slice(&buffer);
+            }
+
+            let new_data = bspatch(&old_data, &patch_data)?;
+            out_file.write_all(&new_data)?;
+        }
+
+        #[cfg(feature = "differential_ota")]
+        install_operation::Type::BrotliBsdiff => {
+            let old_file = old_file
+                .ok_or_else(|| anyhow!("BROTLI_BSDIFF requires differential OTA support"))?;
+
+            // Read and decompress patch data
+            let mut compressed_patch = Vec::new();
+            limited_reader.read_to_end(&mut compressed_patch)?;
+
+            let mut decompressed_patch = Vec::new();
+            brotli::Decompressor::new(&compressed_patch[..], 4096)
+                .read_to_end(&mut decompressed_patch)?;
+
+            let mut old_data = Vec::new();
+            for ext in &op.src_extents {
+                old_file.seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
+                let mut buffer = vec![0u8; (ext.num_blocks.unwrap_or(0) * block_size) as usize];
+                old_file.read_exact(&mut buffer)?;
+                old_data.extend_from_slice(&buffer);
+            }
+
+            let new_data = bspatch(&old_data, &decompressed_patch)?;
+            out_file.write_all(&new_data)?;
+        }
+
+        #[cfg(feature = "differential_ota")]
+        install_operation::Type::Lz4diffBsdiff => {
+            let old_file = old_file
+                .ok_or_else(|| anyhow!("LZ4DIFF_BSDIFF requires differential OTA support"))?;
+
+            // Read and decompress patch data
+            let mut compressed_patch = Vec::new();
+            limited_reader.read_to_end(&mut compressed_patch)?;
+
+            let decompressed_patch = lz4_flex::block::decompress_size_prepended(&compressed_patch)?;
+
+            let mut old_data = Vec::new();
+            for ext in &op.src_extents {
+                old_file.seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
+                let mut buffer = vec![0u8; (ext.num_blocks.unwrap_or(0) * block_size) as usize];
+                old_file.read_exact(&mut buffer)?;
+                old_data.extend_from_slice(&buffer);
+            }
+
+            let new_data = bspatch(&old_data, &decompressed_patch)?;
+            out_file.write_all(&new_data)?;
+        }
+
+        #[cfg(not(feature = "differential_ota"))]
+        install_operation::Type::SourceBsdiff
+        | install_operation::Type::BrotliBsdiff
+        | install_operation::Type::Lz4diffBsdiff => {
+            return Err(anyhow!(
+                "Operation {} requires differential_ota feature to be enabled",
+                operation_index
+            ));
+        }
+
+        _ => {
+            println!(
+                "  Warning: Skipping operation {} due to unknown compression method",
+                operation_index
+            );
+            return Ok(());
+        }
+    }
+
+    Ok(())
+}
+
+// Buffered approach - good for remote HTTP files
+pub fn process_operation_buffered(
+    operation_index: usize,
+    op: &InstallOperation,
+    data_offset: u64,
+    block_size: u64,
+    payload_file: &mut (impl Read + Seek),
+    out_file: &mut (impl Write + Seek),
+    #[allow(unused_variables)] old_file: Option<&mut dyn ReadSeek>,
+) -> Result<()> {
+    if op.dst_extents.is_empty() {
+        return Err(anyhow!(
+            "Invalid operation.dst_extents for operation {}",
+            operation_index
+        ));
+    }
+
+    // Seek to the data position and read all data into memory
     payload_file.seek(SeekFrom::Start(data_offset + op.data_offset.unwrap_or(0)))?;
     let mut data = vec![0u8; op.data_length.unwrap_or(0) as usize];
     payload_file.read_exact(&mut data)?;
 
     match op.r#type() {
+        install_operation::Type::Replace => {
+            // For uncompressed data, write to all destination extents
+            let mut pos = 0;
+            for ext in &op.dst_extents {
+                let ext_size = (ext.num_blocks.unwrap_or(0) * block_size) as usize;
+                let end_pos = pos + ext_size;
+                if end_pos <= data.len() {
+                    out_file.seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
+                    out_file.write_all(&data[pos..end_pos])?;
+                    pos = end_pos;
+                }
+            }
+        }
+
         install_operation::Type::ReplaceXz => match liblzma::decode_all(Cursor::new(&data)) {
             Ok(decompressed) => {
-                out_file.seek(SeekFrom::Start(
-                    op.dst_extents[0].start_block.unwrap_or(0) * block_size,
-                ))?;
-                out_file.write_all(&decompressed)?;
+                let mut pos = 0;
+                for ext in &op.dst_extents {
+                    let ext_size = (ext.num_blocks.unwrap_or(0) * block_size) as usize;
+                    let end_pos = pos + ext_size;
+                    if end_pos <= decompressed.len() {
+                        out_file
+                            .seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
+                        out_file.write_all(&decompressed[pos..end_pos])?;
+                        pos = end_pos;
+                    }
+                }
             }
             Err(e) => {
                 println!(
@@ -48,71 +342,83 @@ pub fn process_operation(
                 return Ok(());
             }
         },
-        install_operation::Type::Zstd => match zstd::decode_all(Cursor::new(&data)) {
-            Ok(decompressed) => {
-                let mut pos = 0;
-                for ext in &op.dst_extents {
-                    let ext_size = (ext.num_blocks.unwrap_or(0) * block_size) as usize;
-                    let end_pos = pos + ext_size;
 
-                    if end_pos <= decompressed.len() {
-                        out_file
-                            .seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
-                        out_file.write_all(&decompressed[pos..end_pos])?;
-                        pos = end_pos;
-                    } else {
-                        println!(
-                            "  Warning: Skipping extent in operation {} due to insufficient decompressed data.",
-                            operation_index
-                        );
-                        break;
-                    }
-                }
-            }
-            Err(e) => {
-                println!(
-                    "  Warning: Skipping operation {} due to unknown Zstd format: {}",
-                    operation_index, e
-                );
-                return Ok(());
-            }
-        },
         install_operation::Type::ReplaceBz => {
-            let mut decoder = BzDecoder::new(Cursor::new(&data));
+            let mut bz_decoder = BzDecoder::new(Cursor::new(&data));
             let mut decompressed = Vec::new();
-            match decoder.read_to_end(&mut decompressed) {
+            match bz_decoder.read_to_end(&mut decompressed) {
                 Ok(_) => {
-                    out_file.seek(SeekFrom::Start(
-                        op.dst_extents[0].start_block.unwrap_or(0) * block_size,
-                    ))?;
-                    out_file.write_all(&decompressed)?;
+                    let mut pos = 0;
+                    for ext in &op.dst_extents {
+                        let ext_size = (ext.num_blocks.unwrap_or(0) * block_size) as usize;
+                        let end_pos = pos + ext_size;
+                        if end_pos <= decompressed.len() {
+                            out_file
+                                .seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
+                            out_file.write_all(&decompressed[pos..end_pos])?;
+                            pos = end_pos;
+                        }
+                    }
                 }
                 Err(e) => {
                     println!(
-                        " Warning: Skipping operation {} due to unknown BZ2 format.  : {}",
+                        "  Warning: Skipping operation {} due to BZ2 decompression error: {}",
                         operation_index, e
                     );
                     return Ok(());
                 }
             }
         }
-        install_operation::Type::Replace => {
-            out_file.seek(SeekFrom::Start(
-                op.dst_extents[0].start_block.unwrap_or(0) * block_size,
-            ))?;
-            out_file.write_all(&data)?;
+
+        install_operation::Type::Zstd => match zstd::decode_all(Cursor::new(&data)) {
+            Ok(decompressed) => {
+                let mut pos = 0;
+                for ext in &op.dst_extents {
+                    let ext_size = (ext.num_blocks.unwrap_or(0) * block_size) as usize;
+                    let end_pos = pos + ext_size;
+                    if end_pos <= decompressed.len() {
+                        out_file
+                            .seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
+                        out_file.write_all(&decompressed[pos..end_pos])?;
+                        pos = end_pos;
+                    }
+                }
+            }
+            Err(e) => {
+                println!(
+                    "  Warning: Skipping operation {} due to ZSTD decompression error: {}",
+                    operation_index, e
+                );
+                return Ok(());
+            }
+        },
+
+        install_operation::Type::Zero => {
+            for ext in &op.dst_extents {
+                let ext_size = (ext.num_blocks.unwrap_or(0) * block_size) as usize;
+                let zero_data = vec![0u8; ext_size];
+                out_file.seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
+                out_file.write_all(&zero_data)?;
+            }
         }
+
         install_operation::Type::SourceCopy => {
             #[cfg(feature = "differential_ota")]
             {
-                let old_file = old_file.ok_or_else(|| anyhow!("SOURCE_COPY requires an old file to copy from"))?;
-                out_file.seek(SeekFrom::Start(
-                    op.dst_extents[0].start_block.unwrap_or(0) * block_size,
-                ))?;
-                for ext in &op.src_extents {
-                    old_file.seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
-                    let mut buffer = vec![0u8; (ext.num_blocks.unwrap_or(0) * block_size) as usize];
+                let old_file = old_file
+                    .ok_or_else(|| anyhow!("SOURCE_COPY requires an old file to copy from"))?;
+                for (src_ext, dst_ext) in op.src_extents.iter().zip(op.dst_extents.iter()) {
+                    let ext_size = (src_ext.num_blocks.unwrap_or(0) * block_size) as usize;
+                    let mut buffer = vec![0u8; ext_size];
+
+                    old_file.seek(SeekFrom::Start(
+                        src_ext.start_block.unwrap_or(0) * block_size,
+                    ))?;
                     old_file.read_exact(&mut buffer)?;
+
+                    out_file.seek(SeekFrom::Start(
+                        dst_ext.start_block.unwrap_or(0) * block_size,
+                    ))?;
                     out_file.write_all(&buffer)?;
                 }
             }
@@ -124,6 +430,7 @@ pub fn process_operation(
                 ));
             }
         }
+
         #[cfg(feature = "differential_ota")]
         install_operation::Type::SourceBsdiff => {
             let old_file = old_file
@@ -136,16 +443,9 @@ pub fn process_operation(
                 old_file.read_exact(&mut buffer)?;
                 old_data.extend_from_slice(&buffer);
             }
-            let new_data = match bspatch(&old_data, &data) {
-                Ok(new_data) => new_data,
-                Err(e) => {
-                    println!(
-                        "  Warning: Skipping operation {} due to failed BSDIFF patch: {}",
-                        operation_index, e
-                    );
-                    return Ok(());
-                }
-            };
+
+            let new_data = bspatch(&old_data, &data)?;
+
             let mut pos = 0;
             for ext in &op.dst_extents {
                 let ext_size = (ext.num_blocks.unwrap_or(0) * block_size) as usize;
@@ -154,37 +454,18 @@ pub fn process_operation(
                     out_file.seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
                     out_file.write_all(&new_data[pos..end_pos])?;
                     pos = end_pos;
-                } else {
-                    println!(
-                        "  Warning: Skipping operation {} due to insufficient patched data.",
-                        operation_index
-                    );
-                    return Ok(());
                 }
             }
         }
+
         #[cfg(feature = "differential_ota")]
         install_operation::Type::BrotliBsdiff => {
             let old_file = old_file
                 .ok_or_else(|| anyhow!("BROTLI_BSDIFF requires differential OTA support"))?;
 
-            // Step 1: Decompress the patch data using Brotli
             let mut decompressed_patch = Vec::new();
-            let decompression_result = brotli::Decompressor::new(&data[..], 4096)
-                .read_to_end(&mut decompressed_patch);
-            
-            let decompressed_patch = match decompression_result {
-                Ok(_) => decompressed_patch,
-                Err(e) => {
-                    println!(
-                        "  Warning: Skipping operation {} due to Brotli decompression error: {}",
-                        operation_index, e
-                    );
-                    return Ok(());
-                }
-            };
+            brotli::Decompressor::new(&data[..], 4096).read_to_end(&mut decompressed_patch)?;
 
-            // Step 2: Read old data from source extents
             let mut old_data = Vec::new();
             for ext in &op.src_extents {
                 old_file.seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
@@ -193,19 +474,8 @@ pub fn process_operation(
                 old_data.extend_from_slice(&buffer);
             }
 
-            // Step 3: Apply bsdiff with decompressed patch
-            let new_data = match bspatch(&old_data, &decompressed_patch) {
-                Ok(new_data) => new_data,
-                Err(e) => {
-                    println!(
-                        "  Warning: Skipping operation {} due to failed BROTLI_BSDIFF patch: {}",
-                        operation_index, e
-                    );
-                    return Ok(());
-                }
-            };
+            let new_data = bspatch(&old_data, &decompressed_patch)?;
 
-            // Step 4: Write to destination extents
             let mut pos = 0;
             for ext in &op.dst_extents {
                 let ext_size = (ext.num_blocks.unwrap_or(0) * block_size) as usize;
@@ -214,33 +484,17 @@ pub fn process_operation(
                     out_file.seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
                     out_file.write_all(&new_data[pos..end_pos])?;
                     pos = end_pos;
-                } else {
-                    println!(
-                        "  Warning: Skipping operation {} due to insufficient patched data.",
-                        operation_index
-                    );
-                    return Ok(());
                 }
             }
         }
+
         #[cfg(feature = "differential_ota")]
         install_operation::Type::Lz4diffBsdiff => {
             let old_file = old_file
                 .ok_or_else(|| anyhow!("LZ4DIFF_BSDIFF requires differential OTA support"))?;
 
-            // Step 1: Decompress the patch data using LZ4
-            let decompressed_patch = match lz4_flex::block::decompress_size_prepended(&data) {
-                Ok(decompressed) => decompressed,
-                Err(e) => {
-                    println!(
-                        "  Warning: Skipping operation {} due to LZ4 decompression error: {}",
-                        operation_index, e
-                    );
-                    return Ok(());
-                }
-            };
+            let decompressed_patch = lz4_flex::block::decompress_size_prepended(&data)?;
 
-            // Step 2: Read old data from source extents
             let mut old_data = Vec::new();
             for ext in &op.src_extents {
                 old_file.seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
@@ -249,19 +503,8 @@ pub fn process_operation(
                 old_data.extend_from_slice(&buffer);
             }
 
-            // Step 3: Apply bsdiff with decompressed patch
-            let new_data = match bspatch(&old_data, &decompressed_patch) {
-                Ok(new_data) => new_data,
-                Err(e) => {
-                    println!(
-                        "  Warning: Skipping operation {} due to failed LZ4DIFF_BSDIFF patch: {}",
-                        operation_index, e
-                    );
-                    return Ok(());
-                }
-            };
+            let new_data = bspatch(&old_data, &decompressed_patch)?;
 
-            // Step 4: Write to destination extents
             let mut pos = 0;
             for ext in &op.dst_extents {
                 let ext_size = (ext.num_blocks.unwrap_or(0) * block_size) as usize;
@@ -270,24 +513,10 @@ pub fn process_operation(
                     out_file.seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
                     out_file.write_all(&new_data[pos..end_pos])?;
                     pos = end_pos;
-                } else {
-                    println!(
-                        "  Warning: Skipping operation {} due to insufficient patched data.",
-                        operation_index
-                    );
-                    return Ok(());
                 }
             }
         }
-        install_operation::Type::Zero => {
-            let zeros = vec![0u8; block_size as usize];
-            for ext in &op.dst_extents {
-                out_file.seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
-                for _ in 0..ext.num_blocks.unwrap_or(0) {
-                    out_file.write_all(&zeros)?;
-                }
-            }
-        }
+
         #[cfg(not(feature = "differential_ota"))]
         install_operation::Type::SourceBsdiff
         | install_operation::Type::BrotliBsdiff
@@ -297,6 +526,7 @@ pub fn process_operation(
                 operation_index
             ));
         }
+
         _ => {
             println!(
                 "  Warning: Skipping operation {} due to unknown compression method",
@@ -305,7 +535,42 @@ pub fn process_operation(
             return Ok(());
         }
     }
+
     Ok(())
+}
+
+// Unified function that chooses the appropriate method
+pub fn process_operation(
+    operation_index: usize,
+    op: &InstallOperation,
+    data_offset: u64,
+    block_size: u64,
+    payload_file: &mut (impl Read + Seek),
+    out_file: &mut (impl Write + Seek),
+    old_file: Option<&mut dyn ReadSeek>,
+    payload_source: PayloadSource,
+) -> Result<()> {
+    if payload_source.should_use_buffered_approach() {
+        process_operation_buffered(
+            operation_index,
+            op,
+            data_offset,
+            block_size,
+            payload_file,
+            out_file,
+            old_file,
+        )
+    } else {
+        process_operation_streaming(
+            operation_index,
+            op,
+            data_offset,
+            block_size,
+            payload_file,
+            out_file,
+            old_file,
+        )
+    }
 }
 
 pub fn dump_partition(
@@ -315,6 +580,7 @@ pub fn dump_partition(
     args: &Args,
     payload_file: &mut (impl Read + Seek),
     multi_progress: Option<&MultiProgress>,
+    payload_source: PayloadSource,
 ) -> Result<()> {
     let partition_name = &partition.partition_name;
     let total_ops = partition.operations.len() as u64;
@@ -325,11 +591,21 @@ pub fn dump_partition(
             .unwrap()
             .progress_chars("▰▱"));
         pb.enable_steady_tick(Duration::from_millis(500));
-        pb.set_message(format!("Processing {} ({} ops)", partition_name, total_ops));
+        pb.set_message(format!(
+            "Processing {} ({} ops) [{}]",
+            partition_name,
+            total_ops,
+            if payload_source.should_use_buffered_approach() {
+                "buffered"
+            } else {
+                "streaming"
+            }
+        ));
         Some(pb)
     } else {
         None
     };
+
     let out_dir = &args.out;
     if args.out.to_string_lossy() != "-" {
         fs::create_dir_all(out_dir)?;
@@ -384,6 +660,7 @@ pub fn dump_partition(
             payload_file,
             &mut out_file,
             old_file.as_mut().map(|f| f as &mut dyn ReadSeek),
+            payload_source,
         )?;
 
         if let Some(pb) = &progress_bar {
@@ -391,6 +668,7 @@ pub fn dump_partition(
             pb.set_position(percentage);
         }
     }
+
     if let Some(pb) = progress_bar {
         pb.finish_with_message(format!(
             "✓ Completed {} ({} ops)",
