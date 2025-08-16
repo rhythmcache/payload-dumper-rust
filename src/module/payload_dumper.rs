@@ -197,7 +197,7 @@ pub fn process_operation_streaming(
             let old_file = old_file
                 .ok_or_else(|| anyhow!("SOURCE_BSDIFF requires differential OTA support"))?;
 
-            // Read patch data into memory (streaming not practical for bsdiff)
+            // Read patch data into memory
             let mut patch_data = Vec::new();
             limited_reader.read_to_end(&mut patch_data)?;
 
@@ -283,7 +283,7 @@ pub fn process_operation_streaming(
     Ok(())
 }
 
-// Buffered approach - good for remote HTTP files
+// Buffered
 pub fn process_operation_buffered(
     operation_index: usize,
     op: &InstallOperation,
@@ -540,32 +540,37 @@ pub fn process_operation_buffered(
 }
 
 // Unified function that chooses the appropriate method
+
+pub struct OperationContext {
+    pub operation_index: usize,
+    pub data_offset: u64,
+    pub block_size: u64,
+    pub payload_source: PayloadSource,
+}
+
 pub fn process_operation(
-    operation_index: usize,
     op: &InstallOperation,
-    data_offset: u64,
-    block_size: u64,
+    context: &OperationContext,
     payload_file: &mut (impl Read + Seek),
     out_file: &mut (impl Write + Seek),
     old_file: Option<&mut dyn ReadSeek>,
-    payload_source: PayloadSource,
 ) -> Result<()> {
-    if payload_source.should_use_buffered_approach() {
+    if context.payload_source.should_use_buffered_approach() {
         process_operation_buffered(
-            operation_index,
+            context.operation_index,
             op,
-            data_offset,
-            block_size,
+            context.data_offset,
+            context.block_size,
             payload_file,
             out_file,
             old_file,
         )
     } else {
         process_operation_streaming(
-            operation_index,
+            context.operation_index,
             op,
-            data_offset,
-            block_size,
+            context.data_offset,
+            context.block_size,
             payload_file,
             out_file,
             old_file,
@@ -652,15 +657,19 @@ pub fn dump_partition(
     let mut old_file: Option<File> = None;
 
     for (i, op) in partition.operations.iter().enumerate() {
-        process_operation(
-            i,
-            op,
+        let context = OperationContext {
+            operation_index: i,
             data_offset,
             block_size,
+            payload_source,
+        };
+
+        process_operation(
+            op,
+            &context,
             payload_file,
             &mut out_file,
             old_file.as_mut().map(|f| f as &mut dyn ReadSeek),
-            payload_source,
         )?;
 
         if let Some(pb) = &progress_bar {
@@ -716,7 +725,7 @@ pub fn create_payload_reader(path: &PathBuf) -> Result<Box<dyn ReadSeek>> {
                                 if offset >= 0 {
                                     self.position.saturating_add(offset as u64)
                                 } else {
-                                    self.position.saturating_sub(offset.abs() as u64)
+                                    self.position.saturating_sub(offset.unsigned_abs())
                                 }
                             }
                             SeekFrom::End(offset) => {
@@ -724,7 +733,7 @@ pub fn create_payload_reader(path: &PathBuf) -> Result<Box<dyn ReadSeek>> {
                                 if offset >= 0 {
                                     file_size.saturating_add(offset as u64)
                                 } else {
-                                    file_size.saturating_sub(offset.abs() as u64)
+                                    file_size.saturating_sub(offset.unsigned_abs())
                                 }
                             }
                         };
@@ -741,7 +750,7 @@ pub fn create_payload_reader(path: &PathBuf) -> Result<Box<dyn ReadSeek>> {
                     }
                 }
 
-                return Ok(Box::new(MmapReader { mmap, position: 0 }) as Box<dyn ReadSeek>);
+                Ok(Box::new(MmapReader { mmap, position: 0 }) as Box<dyn ReadSeek>)
             }
             Err(_) => Ok(Box::new(file) as Box<dyn ReadSeek>),
         }

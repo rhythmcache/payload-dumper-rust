@@ -59,7 +59,7 @@ impl Seek for MmapReader {
                 if offset >= 0 {
                     self.position.saturating_add(offset as u64)
                 } else {
-                    self.position.saturating_sub(offset.abs() as u64)
+                    self.position.saturating_sub(offset.unsigned_abs())
                 }
             }
             SeekFrom::End(offset) => {
@@ -67,7 +67,7 @@ impl Seek for MmapReader {
                 if offset >= 0 {
                     file_size.saturating_add(offset as u64)
                 } else {
-                    file_size.saturating_sub(offset.abs() as u64)
+                    file_size.saturating_sub(offset.unsigned_abs())
                 }
             }
         };

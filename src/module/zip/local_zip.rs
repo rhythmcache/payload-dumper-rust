@@ -78,7 +78,7 @@ impl Read for OptimizedZipPayloadReader {
             .decoder
             .reader
             .read_at(file_position, &mut buf[..to_read])
-            .map_err(|e| Error::new(ErrorKind::Other, e))?;
+            .map_err(Error::other)?;
 
         self.current_position += bytes_read as u64;
 
