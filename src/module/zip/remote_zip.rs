@@ -75,14 +75,14 @@ impl Seek for RemoteZipReader {
                 if offset >= 0 {
                     self.current_position.saturating_add(offset as u64)
                 } else {
-                    self.current_position.saturating_sub(offset.abs() as u64)
+                    self.current_position.saturating_sub(offset.unsigned_abs())
                 }
             }
             SeekFrom::End(offset) => {
                 if offset >= 0 {
                     self.payload_size.saturating_add(offset as u64)
                 } else {
-                    self.payload_size.saturating_sub(offset.abs() as u64)
+                    self.payload_size.saturating_sub(offset.unsigned_abs())
                 }
             }
         };

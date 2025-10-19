@@ -82,11 +82,7 @@ impl ZipParser {
             return Err(anyhow!("Invalid ZIP64 structure"));
         }
 
-        let search_start = if eocd_offset > 20 {
-            eocd_offset - 20
-        } else {
-            0
-        };
+        let search_start = eocd_offset.saturating_sub(20);
 
         reader.seek(SeekFrom::Start(search_start))?;
         let mut buffer = vec![0u8; (eocd_offset - search_start) as usize];

@@ -153,12 +153,10 @@ impl HttpReader {
                         .map(|v| v == "bytes")
                         .unwrap_or(false);
 
-                    if !supports_ranges {
-                        if !ACCEPT_RANGES_WARNING_SHOWN.swap(true, Ordering::SeqCst) {
-                            eprintln!(
-                                "- Warning: Server doesn't advertise Accept-Ranges. The process may fail."
-                            );
-                        }
+                    if !supports_ranges && !ACCEPT_RANGES_WARNING_SHOWN.swap(true, Ordering::SeqCst) {
+                        eprintln!(
+                            "- Warning: Server doesn't advertise Accept-Ranges. The process may fail."
+                        );
                     }
 
                     // Print file size info if requested
@@ -219,8 +217,7 @@ impl HttpReader {
             {
                 Ok(mut response) => {
                     if !response.status().is_success() && response.status().as_u16() != 206 {
-                        return Err(io::Error::new(
-                            io::ErrorKind::Other,
+                        return Err(io::Error::other(
                             format!("HTTP error: {} for range {}", response.status(), range),
                         ));
                     }
@@ -230,8 +227,7 @@ impl HttpReader {
                 Err(e) => {
                     retry_count += 1;
                     if retry_count == max_retries {
-                        return Err(io::Error::new(
-                            io::ErrorKind::Other,
+                        return Err(io::Error::other(
                             format!(
                                 "Failed to read range {} after {} retries: {}",
                                 range, max_retries, e
@@ -243,8 +239,7 @@ impl HttpReader {
             }
         }
 
-        Err(io::Error::new(
-            io::ErrorKind::Other,
+        Err(io::Error::other(
             "Failed to read range after maximum retries",
         ))
     }

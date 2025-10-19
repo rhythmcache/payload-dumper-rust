@@ -437,7 +437,7 @@ pub fn create_payload_reader(path: &PathBuf) -> Result<Box<dyn ReadSeek>> {
                                 if offset >= 0 {
                                     self.position.saturating_add(offset as u64)
                                 } else {
-                                    self.position.saturating_sub(offset.abs() as u64)
+                                    self.position.saturating_sub(offset.unsigned_abs())
                                 }
                             }
                             SeekFrom::End(offset) => {
@@ -445,7 +445,7 @@ pub fn create_payload_reader(path: &PathBuf) -> Result<Box<dyn ReadSeek>> {
                                 if offset >= 0 {
                                     file_size.saturating_add(offset as u64)
                                 } else {
-                                    file_size.saturating_sub(offset.abs() as u64)
+                                    file_size.saturating_sub(offset.unsigned_abs())
                                 }
                             }
                         };
@@ -462,7 +462,7 @@ pub fn create_payload_reader(path: &PathBuf) -> Result<Box<dyn ReadSeek>> {
                     }
                 }
 
-                return Ok(Box::new(MmapReader { mmap, position: 0 }) as Box<dyn ReadSeek>);
+                Ok(Box::new(MmapReader { mmap, position: 0 }) as Box<dyn ReadSeek>)
             }
             Err(_) => Ok(Box::new(file) as Box<dyn ReadSeek>),
         }

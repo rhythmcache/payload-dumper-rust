@@ -22,7 +22,7 @@ pub fn save_metadata(
             let block_size = manifest.block_size.unwrap_or(4096) as u64;
             let size_in_blocks = size_in_bytes / block_size;
             let total_blocks = size_in_bytes / block_size;
-            let hash = info.hash.as_ref().map(|hash| hex::encode(hash));
+            let hash = info.hash.as_ref().map(hex::encode);
             let mut start_offset = data_offset;
             for op in &partition.operations {
                 if let Some(_first_extent) = op.dst_extents.first() {
@@ -64,10 +64,10 @@ pub fn save_metadata(
                 encryption: encryption.to_string(),
                 block_size,
                 total_blocks,
-                run_postinstall: partition.run_postinstall.clone(),
+                run_postinstall: partition.run_postinstall,
                 postinstall_path: partition.postinstall_path.clone(),
                 filesystem_type: partition.filesystem_type.clone(),
-                postinstall_optional: partition.postinstall_optional.clone(),
+                postinstall_optional: partition.postinstall_optional,
                 hash_tree_algorithm: partition.hash_tree_algorithm.clone(),
                 version: partition.version.clone(),
             });
