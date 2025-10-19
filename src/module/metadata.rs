@@ -8,11 +8,11 @@ use crate::module::utils::format_size;
 use anyhow::Result;
 use serde_json;
 use std::fs;
-use std::path::PathBuf;
+use std::path::Path;
 
 pub fn save_metadata(
     manifest: &DeltaArchiveManifest,
-    output_dir: &PathBuf,
+    output_dir: &Path,
     data_offset: u64,
 ) -> Result<String> {
     let mut partitions = Vec::new();

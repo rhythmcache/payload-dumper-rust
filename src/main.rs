@@ -336,11 +336,11 @@ fn main() -> Result<()> {
         partitions_to_extract.len()
     ));
 
-    let use_parallel = ((!is_url
-        && (is_local_zip
-            || args.payload_path.extension().and_then(|e| e.to_str()) == Some("bin")))
-        || is_url)
+    let use_parallel = (is_url
+        || is_local_zip
+        || args.payload_path.extension().and_then(|e| e.to_str()) == Some("bin"))
         && !args.no_parallel;
+
     main_pb.set_message(if use_parallel {
         "Extracting Partitions..."
     } else {
@@ -374,8 +374,6 @@ fn main() -> Result<()> {
                 chunk.par_iter().map(|partition| {
                     let active_readers = Arc::clone(&active_readers);
                     let partition_name = partition.partition_name.clone();
-
-                    
 
                     (0..max_retries)
                         .find_map(|attempt| {

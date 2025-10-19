@@ -2,7 +2,7 @@ use anyhow::{Result, anyhow};
 use bsdiff;
 use std::io::Cursor;
 
-/// Apply a bsdiff patch to old data to produce new data
+// Apply a bsdiff patch to old data to produce new data
 
 pub fn bspatch(old_data: &[u8], patch_data: &[u8]) -> Result<Vec<u8>> {
     let mut new_data = Vec::new();

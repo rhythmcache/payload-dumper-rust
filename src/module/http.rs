@@ -153,7 +153,8 @@ impl HttpReader {
                         .map(|v| v == "bytes")
                         .unwrap_or(false);
 
-                    if !supports_ranges && !ACCEPT_RANGES_WARNING_SHOWN.swap(true, Ordering::SeqCst) {
+                    if !supports_ranges && !ACCEPT_RANGES_WARNING_SHOWN.swap(true, Ordering::SeqCst)
+                    {
                         eprintln!(
                             "- Warning: Server doesn't advertise Accept-Ranges. The process may fail."
                         );
@@ -217,9 +218,11 @@ impl HttpReader {
             {
                 Ok(mut response) => {
                     if !response.status().is_success() && response.status().as_u16() != 206 {
-                        return Err(io::Error::other(
-                            format!("HTTP error: {} for range {}", response.status(), range),
-                        ));
+                        return Err(io::Error::other(format!(
+                            "HTTP error: {} for range {}",
+                            response.status(),
+                            range
+                        )));
                     }
 
                     return copy_from_response(&mut response, &mut buf[..to_read]);
@@ -227,12 +230,10 @@ impl HttpReader {
                 Err(e) => {
                     retry_count += 1;
                     if retry_count == max_retries {
-                        return Err(io::Error::other(
-                            format!(
-                                "Failed to read range {} after {} retries: {}",
-                                range, max_retries, e
-                            ),
-                        ));
+                        return Err(io::Error::other(format!(
+                            "Failed to read range {} after {} retries: {}",
+                            range, max_retries, e
+                        )));
                     }
                     std::thread::sleep(Duration::from_secs(2 * retry_count as u64));
                 }
