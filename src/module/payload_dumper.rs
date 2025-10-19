@@ -17,7 +17,6 @@ use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 
-
 pub fn process_operation(
     operation_index: usize,
     op: &InstallOperation,
@@ -25,8 +24,7 @@ pub fn process_operation(
     block_size: u64,
     payload_file: &mut (impl Read + Seek),
     out_file: &mut (impl Write + Seek),
-    #[allow(unused_variables)]
-    old_file: Option<&mut dyn ReadSeek>,
+    #[allow(unused_variables)] old_file: Option<&mut dyn ReadSeek>,
 ) -> Result<()> {
     payload_file.seek(SeekFrom::Start(data_offset + op.data_offset.unwrap_or(0)))?;
     let mut data = vec![0u8; op.data_length.unwrap_or(0) as usize];
@@ -105,7 +103,8 @@ pub fn process_operation(
         install_operation::Type::SourceCopy => {
             #[cfg(feature = "differential_ota")]
             {
-                let old_file = old_file.ok_or_else(|| anyhow!("SOURCE_COPY requires an old file to copy from"))?;
+                let old_file = old_file
+                    .ok_or_else(|| anyhow!("SOURCE_COPY requires an old file to copy from"))?;
                 out_file.seek(SeekFrom::Start(
                     op.dst_extents[0].start_block.unwrap_or(0) * block_size,
                 ))?;
@@ -170,9 +169,9 @@ pub fn process_operation(
 
             // Step 1: Decompress the patch data using Brotli
             let mut decompressed_patch = Vec::new();
-            let decompression_result = brotli::Decompressor::new(&data[..], 4096)
-                .read_to_end(&mut decompressed_patch);
-            
+            let decompression_result =
+                brotli::Decompressor::new(&data[..], 4096).read_to_end(&mut decompressed_patch);
+
             let decompressed_patch = match decompression_result {
                 Ok(_) => decompressed_patch,
                 Err(e) => {
