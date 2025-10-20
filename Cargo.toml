@@ -14,10 +14,12 @@ categories = ["command-line-utilities"]
 include = [
     "src/**",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "Cargo.toml"
 ]
 
 [[bin]]
+name = "payload_dumper"
 path = "src/main.rs"
 
 [dependencies]
