@@ -1,7 +1,0 @@
-id=payload-dumper-rust
-name=Payload Dumper Rust
-version=0.3.0
-versionCode=3
-author=rhythmcache.t.me
-description=An Android OTA Payload Dumper
-updateJson=https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/updateJson

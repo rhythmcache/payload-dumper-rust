@@ -1,158 +1,150 @@
-# 🚀 payload-dumper-rust
+# payload-dumper-rust 🦀
 
-Android OTA payload dumper written in Rust.
+A fast and efficient Android OTA payload dumper written in Rust.
 
-## 📖 What is Payload?
+## What is this?
 
-Android payload is a file that contains ROM partitions like boot, system, vendor and others. Payload Dumper extracts these partitions from the payload.bin file.
+If you've ever downloaded an Android OTA update and wondered how to extract the actual system images from it, this tool is for you. Android OTA packages contain a `payload.bin` file that holds all the partition images (boot, system, vendor, etc.). This tool extracts those partitions so you can work with them directly.
 
-## ✨ Features
+## Why use this?
 
-- Extracts all or individual images directly from payload.bin or ROM ZIP file
-- Supports extracting individual partitions from URLs without downloading the full ROM ZIP
-- All decompression processes run in parallel for improved performance (can be customised by using `--no-parallel` or `--threads <n>` as argument)
+- **Fast**: All decompression runs in parallel
+- **Flexible**: Extract from payload.bin files, ROM ZIPs, or even direct URLs
+- **Smart**: Only download what you need when extracting from URLs
+- **Reliable**: Verifies extracted partitions to ensure integrity
+- **Cross-platform**: Works on Linux, Windows, macOS, Android (via Termux), and more
 
----
+## Installation
 
-✅ Output partitions Verification  
-✅ Parallel Extraction  
-✅ Selective Partition Extraction  
-✅ Direct Extraction from URL  
+### Quick Install
 
----
+**Linux / Termux:**
+```bash
+bash <(curl -sSL "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/install.sh")
+```
 
-## 📥 How To Use
+**Windows:**
+```powershell
+powershell -NoExit -ExecutionPolicy Bypass -Command "Invoke-RestMethod -Uri 'https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/install.ps1' | Invoke-Expression"
+```
 
-- Download Binaries for your respective Platform from [releases section](https://github.com/rhythmcache/payload-dumper-rust/releases)
-- If you are using a rooted android device you might want to install it as a [magisk module](https://github.com/rhythmcache/payload-dumper-rust/releases/download/0.3.0/payload_dumper-android-magisk-module.zip)
+### Manual Download
 
-- or Run this in termux / Linux Terminal to install:
-  ```bash
-  bash <(curl -sSL "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/install.sh")
-  ```
+Download pre-built binaries for your platform from the [releases page](https://github.com/rhythmcache/payload-dumper-rust/releases).
 
-- To install on windows, run this in Powershell:
-  ```powershell
-  powershell -NoExit -ExecutionPolicy Bypass -Command "Invoke-RestMethod -Uri 'https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/install.ps1' | Invoke-Expression"
-  ```
 
-### Install via Cargo
+### Build from Source
 
-If you have Rust and Cargo installed, you can install this tool with:
-
+If you have Rust installed:
 ```bash
 cargo install payload_dumper
 ```
 
----
+## Usage
 
-## ⚡ Performance Metrics
+### Basic Examples
 
-Here are the performance metrics for **Payload Dumper Rust** running on a **Poco X4 Pro (SD695, 8GB RAM)** in Termux. The test file used is [comet-ota-ad1a.240530.030-98066022.zip](https://dl.google.com/dl/android/aosp/comet-ota-ad1a.240530.030-98066022.zip) (2.53GB).
-
-| **Extraction Method** | **Time Taken** | **Notes** |
-|-----------------------|----------------|-----------|
-| **Direct Payload Extraction** | **2 minutes 26 seconds** | Extracting directly from `payload.bin` |
-| **ZIP File Extraction** | **2 minutes 30 seconds** | Extracting directly from the ZIP file |
-| **Remote URL Extraction** | **Slower** | Depends on network speed |
-
----
-
-## 📸 Screenshots
-
-- **Direct Payload Extraction**:  
-  ![Direct Payload Extraction](https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/photos/Screenshot_20250304-175923_Termux.png)
-
-- **ZIP File Extraction**:  
-  ![ZIP File Extraction](https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/photos/Screenshot_20250304-175502_Termux.png)
-
-- **Remote URL Extraction**:  
-  ![Remote URL Extraction](https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/photos/Screenshot_20250304-180030_Termux.png)
-
----
-
-## 🛠️ Usage
-
-### Basic Usage
-
-To extract partitions from a payload file, run the following command:
-
+Extract all partitions from a payload file:
 ```bash
-payload_dumper <path/to/payload.bin> --out output_directory
+payload_dumper payload.bin --out extracted
 ```
 
-### Direct ZIP Processing
-
-It can directly process payloads from ZIP files without requiring manual extraction. Simply provide the path to the ZIP file:
-
+Extract directly from a ROM ZIP (no need to unzip first):
 ```bash
-./payload_dumper <path/to/ota.zip> --out <output_directory>
+payload_dumper ota_update.zip --out extracted
 ```
 
-### Remote Payloads
-
-It can also handle payloads/zips directly using url. Simply provide the URL as path. This is very slow compared to local extraction though.
-
+Extract from a URL (great for CI/CD or when you don't want to download the whole file):
 ```bash
-./payload_dumper https://example.com/payload.bin
+payload_dumper https://example.com/ota_update.zip --out extracted
 ```
 
-### Individual partitions extraction
-
-To extract individual partitions from payloads/URL/zips, use `--images` and enter the name of partitions you want to extract comma-separated.
-
-For example to just extract `boot` and `vendor_boot` from `url/zip/payload`, simply run:
-
+Extract specific partitions only:
 ```bash
-payload_dumper --images boot,vendor_boot <https://example.com/zip>
+payload_dumper payload.bin --images boot,vendor_boot --out extracted
 ```
 
----
+List available partitions without extracting:
+```bash
+payload_dumper payload.bin --list
+```
+
+### Advanced Options
 
 ```
 Usage: payload_dumper [OPTIONS] <PAYLOAD_PATH>
 
 Arguments:
-  <PAYLOAD_PATH>  
-      Path to the payload file.
-  --out <OUT>  
-      Output directory for extracted partitions. [default: output]
-  --diff  
-      Enable differential OTA mode (requires --old).
-  --old <OLD>  
-      Path to the directory containing old partition images (required for --diff). [default: old]
-  --images <IMAGES>  
-      Comma-separated list of partition names to extract (default: all partitions)
-  --threads <THREADS>  
-      Number of threads to use for parallel processing.
-  --list  
-      List available partitions
-  --metadata
-      Save complete metadata as json ( use -o - to write to stdout )
-  --user-agent
-      Custom User-Agent string for HTTP requests (only used with remote URLs)
-  --no-verify
-      Skip Hash Verification    
-  --no-parallel
-      Disable parallel Extraction
+  <PAYLOAD_PATH>              Path to payload.bin, ROM ZIP, or URL
+
+Options:
+  --out <OUT>                 Output directory [default: output]
+  --images <IMAGES>           Comma-separated partition names to extract
+  --list                      List all available partitions
+  --threads <THREADS>         Number of parallel threads to use
+  --no-parallel               Disable parallel extraction
+  --no-verify                 Skip hash verification
+  --metadata                  Save complete metadata as JSON
+  --diff                      Enable differential OTA mode
+  --old <OLD>                 Directory with old partitions (for differential OTA)
+  --user-agent <AGENT>        Custom User-Agent for HTTP requests
 ```
 
----
+### Practical Examples
 
-## 🔧 Dependencies
+Extract boot and vendor_boot from a URL:
+```bash
+payload_dumper --images boot,vendor_boot https://dl.google.com/path/to/ota.zip
+```
 
-- [Cargo.toml](./Cargo.toml)
-- [update_metadata.proto](https://android.googlesource.com/platform/system/update_engine/+/HEAD/update_metadata.proto)
+Process with custom thread count:
+```bash
+payload_dumper payload.bin --threads 8 --out output
+```
 
----
+Get metadata without extracting:
+```bash
+payload_dumper payload.bin --metadata --out metadata.json
+```
 
-## 🏗️ Build
+## How It Works
 
-To build this, you'll need:
-- Rust compiler and Cargo
+1. Reads the payload structure from the file/ZIP/URL
+2. Identifies all available partitions
+3. Decompresses each partition in parallel (unless disabled)
+4. Verifies the integrity of extracted files
+5. Saves partitions to your output directory
 
----
 
-## 🙏 Credits
+## Technical Details
 
-This tool is inspired from [vm03/payload_dumper](https://github.com/vm03/payload_dumper)
+- **Parallel Processing**: By default, uses all available CPU cores for maximum speed
+- **Memory Efficient**: Streams data instead of loading everything into memory
+- **Network Optimized**: When extracting from URLs, only downloads required chunks
+
+## Dependencies
+
+- Protocol buffer definitions from [Android's update_engine](https://android.googlesource.com/platform/system/update_engine/+/HEAD/update_metadata.proto)
+- See [Cargo.toml](./Cargo.toml) for complete dependency list
+
+## Building from Source
+
+Requirements:
+- Rust toolchain (install from [rustup.rs](https://rustup.rs))
+- Cargo (comes with Rust)
+
+Build command:
+```bash
+cargo build --release
+```
+
+The binary will be at `target/release/payload_dumper`
+
+## Credits
+
+Inspired by [vm03/payload_dumper](https://github.com/vm03/payload_dumper)
+
+## License
+
+[Apache-2](./LICENSE)
+

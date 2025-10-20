@@ -1,6 +1,0 @@
-{
-    "versionCode": 6,
-    "version": "0.6.0",
-    "zipUrl": "https://github.com/rhythmcache/payload-dumper-rust/releases/download/0.6.0/payload-dumper-android-magisk-module.zip",
-    "changelog": "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/changelog.md"
-}
