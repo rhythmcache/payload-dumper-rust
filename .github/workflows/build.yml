@@ -1,0 +1,373 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            target: x86_64-pc-windows-msvc
+          - arch: i686
+            target: i686-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }} --features differential_ota
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static -C link-arg=/LTCG
+      
+      - name: Generate SHA256
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release
+          sha256sum payload_dumper.exe > sha256sum.txt
+      
+      - name: Package
+        shell: bash
+        run: |
+          mkdir package
+          cp target/${{ matrix.target }}/release/payload_dumper.exe package/
+          cp target/${{ matrix.target }}/release/sha256sum.txt package/
+          cd package
+          7z a ../payload_dumper-windows-${{ matrix.arch }}.zip *
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: payload_dumper-windows-${{ matrix.arch }}
+          path: payload_dumper-windows-${{ matrix.arch }}.zip
+
+  build-windows-aarch64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-pc-windows-gnullvm
+      
+      - name: Download and setup LLVM-MinGW
+        run: |
+          wget https://github.com/mstorsjo/llvm-mingw/releases/download/20251007/llvm-mingw-20251007-msvcrt-ubuntu-22.04-x86_64.tar.xz
+          tar -xf llvm-mingw-20251007-msvcrt-ubuntu-22.04-x86_64.tar.xz
+          echo "$(pwd)/llvm-mingw-20251007-msvcrt-ubuntu-22.04-x86_64/bin" >> $GITHUB_PATH
+      
+      - name: Setup cargo config
+        run: |
+          mkdir -p .cargo
+          cat > .cargo/config.toml << 'EOF'
+          [target.aarch64-pc-windows-gnullvm]
+          linker = "aarch64-w64-mingw32-clang"
+          EOF
+      
+      - name: Build
+        run: cargo build --release --target aarch64-pc-windows-gnullvm --features differential_ota
+        env:
+          CC: aarch64-w64-mingw32-clang
+          CXX: aarch64-w64-mingw32-clang++
+          HOST_TRIPLE: aarch64-w64-mingw32
+      
+      - name: Generate SHA256
+        run: |
+          cd target/aarch64-pc-windows-gnullvm/release
+          sha256sum payload_dumper.exe > sha256sum.txt
+      
+      - name: Package
+        run: |
+          mkdir package
+          cp target/aarch64-pc-windows-gnullvm/release/payload_dumper.exe package/
+          cp target/aarch64-pc-windows-gnullvm/release/sha256sum.txt package/
+          cd package
+          zip ../payload_dumper-windows-aarch64.zip *
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: payload_dumper-windows-aarch64
+          path: payload_dumper-windows-aarch64.zip
+
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            target: x86_64-apple-darwin
+          - arch: aarch64
+            target: aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }} --features differential_ota
+      
+      - name: Generate SHA256
+        run: |
+          cd target/${{ matrix.target }}/release
+          shasum -a 256 payload_dumper > sha256sum.txt
+      
+      - name: Package
+        run: |
+          mkdir package
+          cp target/${{ matrix.target }}/release/payload_dumper package/
+          cp target/${{ matrix.target }}/release/sha256sum.txt package/
+          cd package
+          zip ../payload_dumper-macos-${{ matrix.arch }}.zip *
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: payload_dumper-macos-${{ matrix.arch }}
+          path: payload_dumper-macos-${{ matrix.arch }}.zip
+
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            target: x86_64-unknown-linux-gnu
+            gcc_prefix: x86_64-linux-gnu
+            packages: ""
+          - arch: i686
+            target: i686-unknown-linux-gnu
+            gcc_prefix: ""
+            packages: gcc-multilib g++-multilib
+          - arch: aarch64
+            target: aarch64-unknown-linux-gnu
+            gcc_prefix: aarch64-linux-gnu
+            packages: gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          - arch: riscv64
+            target: riscv64gc-unknown-linux-gnu
+            gcc_prefix: riscv64-linux-gnu
+            packages: gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
+          - arch: armv7
+            target: armv7-unknown-linux-gnueabihf
+            gcc_prefix: arm-linux-gnueabihf
+            packages: gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      
+      - name: Install cross-compilation toolchain
+        if: matrix.packages != ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.packages }}
+      
+      - name: Setup cargo config
+        if: matrix.arch != 'x86_64'
+        run: |
+          mkdir -p .cargo
+          if [ "${{ matrix.arch }}" = "i686" ]; then
+            cat > .cargo/config.toml << 'EOF'
+          [target.i686-unknown-linux-gnu]
+          linker = "gcc"
+          rustflags = ["-C", "link-arg=-m32"]
+          EOF
+          else
+            cat > .cargo/config.toml << EOF
+          [target.${{ matrix.target }}]
+          linker = "${{ matrix.gcc_prefix }}-gcc"
+          EOF
+          fi
+      
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }} --all-features
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static -C link-arg=-static -C link-arg=-no-pie
+      
+      - name: Strip binary
+        run: |
+          if [ "${{ matrix.arch }}" = "x86_64" ] || [ "${{ matrix.arch }}" = "i686" ]; then
+            strip target/${{ matrix.target }}/release/payload_dumper
+          else
+            ${{ matrix.gcc_prefix }}-strip target/${{ matrix.target }}/release/payload_dumper
+          fi
+      
+      - name: Generate SHA256
+        run: |
+          cd target/${{ matrix.target }}/release
+          sha256sum payload_dumper > sha256sum.txt
+      
+      - name: Package
+        run: |
+          mkdir package
+          cp target/${{ matrix.target }}/release/payload_dumper package/
+          cp target/${{ matrix.target }}/release/sha256sum.txt package/
+          cd package
+          zip ../payload_dumper-linux-${{ matrix.arch }}.zip *
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: payload_dumper-linux-${{ matrix.arch }}
+          path: payload_dumper-linux-${{ matrix.arch }}.zip
+
+  build-android:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - arch: aarch64
+            target: aarch64-linux-android
+          - arch: armv7a
+            target: armv7-linux-androideabi
+          - arch: x86_64
+            target: x86_64-linux-android
+          - arch: i686
+            target: i686-linux-android
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r29
+          add-to-path: true
+
+      - name: Create symlinks for NDK toolchains
+        run: |
+         NDK_TOOLCHAIN="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+         cd "$NDK_TOOLCHAIN"
+         ln -sf aarch64-linux-android21-clang aarch64-linux-android-clang
+         ln -sf aarch64-linux-android21-clang++ aarch64-linux-android-clang++
+         ln -sf armv7a-linux-androideabi21-clang armv7a-linux-androideabi-clang
+         ln -sf armv7a-linux-androideabi21-clang++ armv7a-linux-androideabi-clang++
+         ln -sf arm-linux-androideabi21-clang arm-linux-androideabi-clang
+         ln -sf arm-linux-androideabi21-clang++ arm-linux-androideabi-clang++
+         ln -sf x86_64-linux-android21-clang x86_64-linux-android-clang
+         ln -sf x86_64-linux-android21-clang++ x86_64-linux-android-clang++
+         ln -sf i686-linux-android21-clang i686-linux-android-clang
+         ln -sf i686-linux-android21-clang++ i686-linux-android-clang++    
+      
+      - name: Setup cargo config
+        run: |
+          mkdir -p .cargo
+          cat > .cargo/config.toml << EOF
+          [target.aarch64-linux-android]
+          linker = "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang"
+          
+          [target.armv7-linux-androideabi]
+          linker = "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang"
+          
+          [target.x86_64-linux-android]
+          linker = "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android21-clang"
+          
+          [target.i686-linux-android]
+          linker = "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android21-clang"
+          EOF
+      
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }} --features differential_ota
+        env:
+         CC_aarch64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang
+         CXX_aarch64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang++
+         CC_armv7_linux_androideabi: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang
+         CXX_armv7_linux_androideabi: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang++
+         CC_x86_64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android21-clang
+         CXX_x86_64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android21-clang++
+         CC_i686_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android21-clang
+         CXX_i686_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android21-clang++
+         AR_aarch64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+         AR_armv7_linux_androideabi: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+         AR_x86_64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+         AR_i686_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+      
+      - name: Strip binary
+        run: |
+          ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip target/${{ matrix.target }}/release/payload_dumper
+      
+      - name: Generate SHA256
+        run: |
+          cd target/${{ matrix.target }}/release
+          sha256sum payload_dumper > sha256sum.txt
+      
+      - name: Package
+        run: |
+          mkdir package
+          cp target/${{ matrix.target }}/release/payload_dumper package/
+          cp target/${{ matrix.target }}/release/sha256sum.txt package/
+          cd package
+          zip ../payload_dumper-android-${{ matrix.arch }}.zip *
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: payload_dumper-android-${{ matrix.arch }}
+          path: payload_dumper-android-${{ matrix.arch }}.zip
+
+  release:
+    needs: [build-windows, build-windows-aarch64, build-macos, build-linux, build-android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Extract version from Cargo.toml
+        id: version
+        run: |
+          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: "payload-dumper-rust v${{ steps.version.outputs.version }}"
+          body: |
+            # payload-dumper-rust v${{ steps.version.outputs.version }}
+            
+            Automated build from workflow run #${{ github.run_number }}
+            
+            ## Installation
+            
+            If you're unsure which to download:
+            - To install on `Linux` or `Termux`, Run
+            ```bash
+            bash <(curl -sSL "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/install.sh")
+            ```
+            - To install on `Windows`, run
+            ```powershell
+            powershell -NoExit -ExecutionPolicy Bypass -Command "Invoke-RestMethod -Uri 'https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/install.ps1' | Invoke-Expression"
+            ```
+            
+          files: |
+            artifacts/**/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
