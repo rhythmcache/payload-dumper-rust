@@ -41,7 +41,7 @@ pub struct Args {
     )]
     pub images: String,
 
-    #[arg(long, help = "Number of threads to use for parallel processing")]
+    #[arg(long, alias ="concurrency", help = "Number of threads to use for parallel processing")]
     pub threads: Option<usize>,
 
     #[cfg(feature = "differential_ota")]
