@@ -8,6 +8,7 @@ $GITHUB_API_URL = "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/
 
 $installDir = "$env:USERPROFILE\.extra"
 $binPath = "$installDir\payload_dumper.exe"
+
 function Get-YesNoInput {
     param([string]$Prompt)
     
@@ -24,7 +25,7 @@ function Get-YesNoInput {
 function Extract-Version {
     param([string]$VersionString)
     
-    if ($VersionString -match '(\d+\.\d+\.\d+)') {
+    if ($VersionString -match 'v?(\d+\.\d+\.\d+)') {
         return $matches[1]
     }
     return $null
@@ -40,7 +41,6 @@ if ($existingPath -or (Test-Path $binPath)) {
     
     Write-Host "INFO: payload_dumper is already installed at: $installedPath" -ForegroundColor Cyan
     
-    # Get current version
     try {
         $currentVersionOutput = & $installedPath --version 2>$null
         if ($LASTEXITCODE -eq 0 -and $currentVersionOutput) {
@@ -150,7 +150,6 @@ function Get-AssetPattern {
 
 $assetPattern = Get-AssetPattern $arch
 
-# Fallback architecture detection if primary method fails
 if ([string]::IsNullOrEmpty($assetPattern)) {
     try {
         $dotNetArch = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToUpper()
@@ -170,7 +169,6 @@ if ([string]::IsNullOrEmpty($assetPattern)) {
 
 Start-Sleep -Milliseconds 500
 
-# Fetch release info
 if (-not $releaseInfo) {
     Write-Host "INFO: Fetching latest release information..." -ForegroundColor Cyan
     Start-Sleep -Milliseconds 500
