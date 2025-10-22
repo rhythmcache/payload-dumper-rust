@@ -141,7 +141,7 @@ pub fn verify_partition_hash(
                     hasher.update(&mmap[..]);
 
                     let hash = hasher.finalize();
-                    let matches = hash.as_slice() == expected.as_slice();
+                    let matches = &*hash == expected.as_slice();
 
                     if let Some(pb) = progress_bar {
                         if matches {
@@ -180,7 +180,7 @@ pub fn verify_partition_hash(
         }
 
         let hash = hasher.finalize();
-        let matches = hash.as_slice() == expected.as_slice();
+        let matches = &*hash == expected.as_slice();
 
         if let Some(pb) = progress_bar {
             if matches {
@@ -222,9 +222,9 @@ pub fn verify_old_partition(
         }
 
         let computed_hash = hasher.finalize();
-        if computed_hash.as_slice() != expected_hash {
-            return Err(anyhow!("Old partition hash verification failed"));
-        }
+        if &*computed_hash != expected_hash {
+        return Err(anyhow!("Old partition hash verification failed"));
+}
     }
     Ok(())
 }
