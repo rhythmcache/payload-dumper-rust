@@ -94,6 +94,6 @@ pub struct Args {
     #[arg(short = 'P', long, help = "Disable parallel extraction")]
     pub no_parallel: bool,
 
-    #[arg(short = 'V', long, help = "Skip hash verification")]
+    #[arg(short = 'n', long, help = "Skip hash verification")]
     pub no_verify: bool,
 }
