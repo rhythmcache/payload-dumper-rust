@@ -3,6 +3,13 @@ use std::path::PathBuf;
 
 const VERSION_STRING: &str = concat!(
     env!("CARGO_PKG_VERSION"), "\n",
+    "Copyright (C) 2024-2025 rhythmcache\n",
+    "License Apache-2.0: Apache License 2.0 <https://www.apache.org/licenses/LICENSE-2.0>\n",
+    "\n",
+    "This is free software; you are free to change and redistribute it.\n",
+    "There is NO WARRANTY, to the extent permitted by law.\n",
+    "\n",
+    "Project home: <https://github.com/rhythmcache/payload-dumper-rust>\n",
     "\n",
     "Build Information:\n",
     "  Version:    ", env!("CARGO_PKG_VERSION"), "\n",
