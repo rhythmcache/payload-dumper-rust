@@ -35,6 +35,7 @@ pub struct Args {
     #[arg(
         long,
         default_value = "",
+        alias = "partitions",
         hide_default_value = true,
         help = "Comma-separated list of partition names to extract"
     )]
