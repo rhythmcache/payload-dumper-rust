@@ -24,23 +24,25 @@ get_yes_no() {
     done
 }
 
-# extract version number from version string
 extract_version() {
-    echo "$1" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1
+    local input="$1"
+    local version
+    version=$(echo "$input" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 | sed 's/^v//')
+    if [ -z "$version" ]; then
+        version=$(echo "$input" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    fi
+    echo "$version"
 }
 
-# Check if payload_dumper is already installed
 if command -v payload_dumper >/dev/null 2>&1; then
     existing_path=$(which payload_dumper)
     echo "[*] payload_dumper is already installed at: $existing_path"
     
-    # Get current version
     current_version_output=$(payload_dumper --version 2>/dev/null)
     if [ $? -eq 0 ]; then
         current_version=$(extract_version "$current_version_output")
         echo "[*] Current version: $current_version"
         
-        # Get latest release info to compare versions
         echo "[*] Fetching latest release information..."
         release_info=$(curl -s "$GITHUB_API_URL")
         if [ $? -ne 0 ] || [ -z "$release_info" ]; then
@@ -68,7 +70,6 @@ if command -v payload_dumper >/dev/null 2>&1; then
                 echo "[*] A newer version is available!"
                 echo "[*] Updating from $current_version to $latest_version..."
                 
-                # Check if we have write permissions to the installation directory
                 install_dir=$(dirname "$existing_path")
                 if [ -w "$install_dir" ]; then
                     echo "[*] Removing old version..."
@@ -165,7 +166,6 @@ if [ -z "$asset_pattern" ]; then
     exit 1
 fi
 
-
 if [ -z "$release_info" ]; then
     echo "[*] Fetching latest release information..."
     sleep 0.5
@@ -226,7 +226,6 @@ echo "[*] Found matching release: $asset_name"
 echo "[*] Download URL: $download_url"
 temp_dir=$(mktemp -d)
 zip_file="$temp_dir/$asset_name"
-
 
 if [[ "$system_type" == "windows" ]]; then
     bin_path="$bin_dir/payload_dumper.exe"
