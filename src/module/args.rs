@@ -2,7 +2,7 @@ use clap::Parser;
 use std::path::PathBuf;
 
 const VERSION_STRING: &str = concat!(
-    env!("CARGO_PKG_VERSION"), "\n",
+    env!("CARGO_PKG_VERSION"), "\n\n",
     "Copyright (C) 2024-2025 rhythmcache\n",
     "License Apache-2.0: Apache License 2.0 <https://www.apache.org/licenses/LICENSE-2.0>\n",
     "\n",
