@@ -322,7 +322,7 @@ pub fn dump_partition(
         pb.set_style(ProgressStyle::default_bar()
             .template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/white}] {percent}% - {msg}")
             .unwrap()
-            .progress_chars("▰▱"));
+            .progress_chars("▰▱△"));
         pb.enable_steady_tick(Duration::from_millis(500));
         pb.set_message(format!("Processing {} ({} ops)", partition_name, total_ops));
         Some(pb)
