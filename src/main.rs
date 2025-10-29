@@ -63,6 +63,8 @@ fn main() -> Result<()> {
         .num_threads(thread_count)
         .build_global()?;
 
+    println!("- Initialized {} thread(s)", thread_count);
+
     let start_time = Instant::now();
 
     let multi_progress = MultiProgress::new();
@@ -112,13 +114,13 @@ fn main() -> Result<()> {
             if metadata.len() > 1024 * 1024 {
                 if is_stdout {
                     eprintln!(
-                        "Processing file: {}, size: {}",
+                        "- Processing file: {}, size: {}",
                         payload_path_str,
                         format_size(metadata.len())
                     );
                 } else {
                     println!(
-                        "Processing file: {}, size: {}",
+                        "- Processing file: {}, size: {}",
                         payload_path_str,
                         format_size(metadata.len())
                     );
