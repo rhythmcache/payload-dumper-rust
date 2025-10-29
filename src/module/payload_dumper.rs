@@ -337,16 +337,11 @@ pub fn dump_partition(
     let mut out_file = File::create(&out_path)?;
 
     if let Some(info) = &partition.new_partition_info {
-        if info.size.unwrap_or(0) > 0 {
-            #[cfg(target_family = "unix")]
-            {
-                if let Some(size) = info.size {
-                    out_file.set_len(size)?;
-                } else {
-                    return Err(anyhow!("Partition size is missing"));
-                }
-            }
-        }
+    if let Some(size) = info.size {
+        out_file.set_len(size)?;
+    } else {
+        return Err(anyhow!("Partition size is missing"));
+    }
     }
 
     #[cfg(feature = "differential_ota")]
