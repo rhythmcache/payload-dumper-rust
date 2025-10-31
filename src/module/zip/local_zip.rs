@@ -48,7 +48,10 @@ impl SharedZipPayloadReader {
         let mut payload_entry = entry;
         payload_entry.data_offset = data_offset;
 
-        Ok(Self { file: Arc::new(std::fs::File::open(path)?), payload_entry })
+        Ok(Self {
+            file: Arc::new(std::fs::File::open(path)?),
+            payload_entry,
+        })
     }
 
     // read at a specific offset within payload.bin
@@ -87,7 +90,11 @@ impl crate::module::payload_dumper::PayloadRead for SharedZipPayloadReader {
 impl<R: Read + Seek> ZipPayloadReader<R> {
     pub fn new(reader: R) -> IoResult<Self> {
         let decoder = ZipDecoder::new(reader)?;
-        Ok(ZipPayloadReader { decoder, current_entry: None, current_position: 0 })
+        Ok(ZipPayloadReader {
+            decoder,
+            current_entry: None,
+            current_position: 0,
+        })
     }
 
     pub fn load_payload_entry(&mut self) -> IoResult<()> {
@@ -100,7 +107,10 @@ impl<R: Read + Seek> ZipPayloadReader<R> {
             self.current_position = 0;
             Ok(())
         } else {
-            Err(Error::new(ErrorKind::NotFound, "payload.bin not found in the zip"))
+            Err(Error::new(
+                ErrorKind::NotFound,
+                "payload.bin not found in the zip",
+            ))
         }
     }
 }
@@ -170,7 +180,10 @@ impl<R: Read + Seek> Seek for ZipPayloadReader<R> {
         };
 
         if new_position > entry.uncompressed_size {
-            return Err(Error::new(ErrorKind::InvalidInput, "Seek beyond end of data"));
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "Seek beyond end of data",
+            ));
         }
 
         self.current_position = new_position;

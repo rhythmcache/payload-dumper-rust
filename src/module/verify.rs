@@ -223,8 +223,8 @@ pub fn verify_old_partition(
 
         let computed_hash = hasher.finalize();
         if &*computed_hash != expected_hash {
-        return Err(anyhow!("Old partition hash verification failed"));
-}
+            return Err(anyhow!("Old partition hash verification failed"));
+        }
     }
     Ok(())
 }

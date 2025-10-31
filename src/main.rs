@@ -64,7 +64,9 @@ fn main() -> Result<()> {
         num_cpus::get()
     };
 
-    rayon::ThreadPoolBuilder::new().num_threads(thread_count).build_global()?;
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(thread_count)
+        .build_global()?;
 
     println!("- Initialized {} thread(s)", thread_count);
 
@@ -72,7 +74,11 @@ fn main() -> Result<()> {
 
     let multi_progress = MultiProgress::new();
     let main_pb = multi_progress.add(ProgressBar::new_spinner());
-    main_pb.set_style(ProgressStyle::default_spinner().template("{spinner:.blue} {msg}").unwrap());
+    main_pb.set_style(
+        ProgressStyle::default_spinner()
+            .template("{spinner:.blue} {msg}")
+            .unwrap(),
+    );
     main_pb.enable_steady_tick(Duration::from_millis(100));
     let payload_path_str = args.payload_path.to_string_lossy().to_string();
 
@@ -224,7 +230,10 @@ fn main() -> Result<()> {
     }
     let file_format_version = payload_reader.read_u64::<BigEndian>()?;
     if file_format_version != 2 {
-        return Err(anyhow!("Unsupported payload version: {}", file_format_version));
+        return Err(anyhow!(
+            "Unsupported payload version: {}",
+            file_format_version
+        ));
     }
     let manifest_size = payload_reader.read_u64::<BigEndian>()?;
     let metadata_signature_size = payload_reader.read_u32::<BigEndian>()?;
@@ -271,7 +280,10 @@ fn main() -> Result<()> {
                 if is_stdout {
                     println!("{}", json);
                 } else {
-                    println!("✓ Metadata saved to: {}/payload_metadata.json", args.out.display());
+                    println!(
+                        "✓ Metadata saved to: {}/payload_metadata.json",
+                        args.out.display()
+                    );
                 }
                 multi_progress.clear()?;
                 return Ok(());
@@ -317,14 +329,21 @@ fn main() -> Result<()> {
         manifest.partitions.iter().collect()
     } else {
         let images = args.images.split(',').collect::<HashSet<_>>();
-        manifest.partitions.iter().filter(|p| images.contains(p.partition_name.as_str())).collect()
+        manifest
+            .partitions
+            .iter()
+            .filter(|p| images.contains(p.partition_name.as_str()))
+            .collect()
     };
     if partitions_to_extract.is_empty() {
         main_pb.finish_with_message("No partitions to extract");
         multi_progress.clear()?;
         return Ok(());
     }
-    main_pb.set_message(format!("Found {} partitions to extract", partitions_to_extract.len()));
+    main_pb.set_message(format!(
+        "Found {} partitions to extract",
+        partitions_to_extract.len()
+    ));
 
     let use_parallel = (is_url
         || is_local_zip
@@ -362,7 +381,11 @@ fn main() -> Result<()> {
 
     if use_parallel {
         #[cfg(feature = "remote_ota")]
-        let payload_url = Arc::new(if is_url { payload_path_str.clone() } else { String::new() });
+        let payload_url = Arc::new(if is_url {
+            payload_path_str.clone()
+        } else {
+            String::new()
+        });
 
         let max_retries = 3;
         let num_cpus = num_cpus::get();
@@ -543,7 +566,10 @@ fn main() -> Result<()> {
                 &owned,
                 Some(&multi_progress),
             ) {
-                eprintln!("Failed to process partition {}: {}", partition.partition_name, e);
+                eprintln!(
+                    "Failed to process partition {}: {}",
+                    partition.partition_name, e
+                );
                 failed_partitions.push(partition.partition_name.clone());
             }
         }

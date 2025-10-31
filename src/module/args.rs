@@ -2,7 +2,8 @@ use clap::Parser;
 use std::path::PathBuf;
 
 const VERSION_STRING: &str = concat!(
-    env!("CARGO_PKG_VERSION"), "\n\n",
+    env!("CARGO_PKG_VERSION"),
+    "\n\n",
     "Copyright (C) 2024-2025 rhythmcache\n",
     "License Apache-2.0: Apache License 2.0 <https://www.apache.org/licenses/LICENSE-2.0>\n",
     "\n",
@@ -12,21 +13,46 @@ const VERSION_STRING: &str = concat!(
     "Project home: <https://github.com/rhythmcache/payload-dumper-rust>\n",
     "\n",
     "Build Information:\n",
-    "  Version:    ", env!("CARGO_PKG_VERSION"), "\n",
-    "  Git:        ", env!("GIT_COMMIT_SHORT"), " (", env!("GIT_BRANCH"), ")", "\n",
-    "  Built:      ", env!("BUILD_TIMESTAMP"), "\n",
-    "  Rustc:      ", env!("RUSTC_VERSION"), "\n",
-    "  Host:       ", env!("BUILD_HOST"), "\n",
+    "  Version:    ",
+    env!("CARGO_PKG_VERSION"),
+    "\n",
+    "  Git:        ",
+    env!("GIT_COMMIT_SHORT"),
+    " (",
+    env!("GIT_BRANCH"),
+    ")",
+    "\n",
+    "  Built:      ",
+    env!("BUILD_TIMESTAMP"),
+    "\n",
+    "  Rustc:      ",
+    env!("RUSTC_VERSION"),
+    "\n",
+    "  Host:       ",
+    env!("BUILD_HOST"),
+    "\n",
     "\n",
     "Target Information:\n",
-    "  Target:     ", env!("BUILD_TARGET"), "\n",
-    "  Arch:       ", env!("TARGET_ARCH"), "\n",
-    "  OS:         ", env!("TARGET_OS"), "\n",
+    "  Target:     ",
+    env!("BUILD_TARGET"),
+    "\n",
+    "  Arch:       ",
+    env!("TARGET_ARCH"),
+    "\n",
+    "  OS:         ",
+    env!("TARGET_OS"),
+    "\n",
     "\n",
     "Build Configuration:\n",
-    "  Profile:    ", env!("BUILD_PROFILE"), "\n",
-    "  Opt Level:  ", env!("OPT_LEVEL"), "\n",
-    "  Features:   ", env!("BUILD_FEATURES"), "\n"
+    "  Profile:    ",
+    env!("BUILD_PROFILE"),
+    "\n",
+    "  Opt Level:  ",
+    env!("OPT_LEVEL"),
+    "\n",
+    "  Features:   ",
+    env!("BUILD_FEATURES"),
+    "\n"
 );
 
 #[derive(Parser)]
@@ -54,7 +80,11 @@ pub struct Args {
     pub user_agent: Option<String>,
 
     #[cfg(feature = "differential_ota")]
-    #[arg(short = 'd', long, help = "Enable differential OTA mode (requires --old)")]
+    #[arg(
+        short = 'd',
+        long,
+        help = "Enable differential OTA mode (requires --old)"
+    )]
     pub diff: bool,
 
     #[cfg(feature = "differential_ota")]

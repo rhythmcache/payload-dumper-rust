@@ -136,8 +136,9 @@ pub fn process_operation<P: PayloadRead>(
             }
         }
         install_operation::Type::Replace => {
-            out_file
-                .seek(SeekFrom::Start(op.dst_extents[0].start_block.unwrap_or(0) * block_size))?;
+            out_file.seek(SeekFrom::Start(
+                op.dst_extents[0].start_block.unwrap_or(0) * block_size,
+            ))?;
             out_file.write_all(&data)?;
         }
         install_operation::Type::SourceCopy => {
@@ -385,7 +386,11 @@ pub fn dump_partition<P: PayloadRead>(
         if let Some(old_partition_info) = &partition.old_partition_info
             && let Err(e) = verify_old_partition(&mut file, old_partition_info)
         {
-            return Err(anyhow!("Old partition verification failed for {}: {}", partition_name, e));
+            return Err(anyhow!(
+                "Old partition verification failed for {}: {}",
+                partition_name,
+                e
+            ));
         }
 
         Some(file)
@@ -413,7 +418,10 @@ pub fn dump_partition<P: PayloadRead>(
         }
     }
     if let Some(pb) = progress_bar {
-        pb.finish_with_message(format!("✓ Completed {} ({} ops)", partition_name, total_ops));
+        pb.finish_with_message(format!(
+            "✓ Completed {} ({} ops)",
+            partition_name, total_ops
+        ));
     }
     Ok(())
 }
