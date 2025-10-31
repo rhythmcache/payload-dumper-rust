@@ -1,34 +1,75 @@
-use crate::InstallOperation;
-pub use crate::PartitionUpdate;
-use crate::ReadSeek;
-use crate::install_operation;
-use crate::module::args::Args;
-#[cfg(feature = "differential_ota")]
-use crate::module::patch::bspatch;
-#[cfg(feature = "differential_ota")]
-use crate::module::verify::verify_old_partition;
+use std::fs::{self, File};
+use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
+use std::path::PathBuf;
+use std::sync::Arc; // NEW
+use std::time::Duration;
+
 #[cfg(feature = "differential_ota")]
 use anyhow::Context;
 use anyhow::{Result, anyhow};
 use bzip2::read::BzDecoder;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use std::fs::{self, File};
-use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
-use std::path::PathBuf;
-use std::time::Duration;
+use positioned_io::ReadAt; // NEW
 
-pub fn process_operation(
+pub use crate::PartitionUpdate;
+use crate::module::args::Args;
+#[cfg(feature = "differential_ota")]
+use crate::module::patch::bspatch;
+#[cfg(feature = "differential_ota")]
+use crate::module::verify::verify_old_partition;
+use crate::{InstallOperation, ReadSeek, install_operation};
+
+// PayloadRead Trait
+pub trait PayloadRead: Send + Sync {
+    fn read_data_at(&self, offset: u64, buf: &mut [u8]) -> io::Result<()>;
+}
+
+// Implementation for Arc<File> (shared reader with positioned I/O)
+impl PayloadRead for Arc<File> {
+    fn read_data_at(&self, offset: u64, buf: &mut [u8]) -> io::Result<()> {
+        self.read_exact_at(offset, buf)
+    }
+}
+
+// wrapper for owned readers that need mutable access
+pub struct OwnedReader<'a> {
+    inner: &'a mut Box<dyn ReadSeek>,
+}
+
+impl<'a> OwnedReader<'a> {
+    pub fn new(reader: &'a mut Box<dyn ReadSeek>) -> Self {
+        Self { inner: reader }
+    }
+}
+
+impl<'a> PayloadRead for OwnedReader<'a> {
+    fn read_data_at(&self, offset: u64, buf: &mut [u8]) -> io::Result<()> {
+        // sequential access using seek + read
+        // this is safe because OwnedReader is only used in contexts
+        // where we have exclusive mutable access to the underlying reader
+        let reader = unsafe { &mut *(self.inner as *const _ as *mut Box<dyn ReadSeek>) };
+        reader.seek(SeekFrom::Start(offset))?;
+        reader.read_exact(buf)?;
+        Ok(())
+    }
+}
+
+unsafe impl<'a> Send for OwnedReader<'a> {}
+unsafe impl<'a> Sync for OwnedReader<'a> {}
+
+pub fn process_operation<P: PayloadRead>(
     operation_index: usize,
     op: &InstallOperation,
     data_offset: u64,
     block_size: u64,
-    payload_file: &mut (impl Read + Seek),
+    payload_file: &P,
     out_file: &mut (impl Write + Seek),
     #[allow(unused_variables)] old_file: Option<&mut dyn ReadSeek>,
 ) -> Result<()> {
-    payload_file.seek(SeekFrom::Start(data_offset + op.data_offset.unwrap_or(0)))?;
+    // Use positioned read
+    let offset = data_offset + op.data_offset.unwrap_or(0);
     let mut data = vec![0u8; op.data_length.unwrap_or(0) as usize];
-    payload_file.read_exact(&mut data)?;
+    payload_file.read_data_at(offset, &mut data)?;
 
     match op.r#type() {
         install_operation::Type::ReplaceXz => match liblzma::decode_all(Cursor::new(&data)) {
@@ -95,9 +136,8 @@ pub fn process_operation(
             }
         }
         install_operation::Type::Replace => {
-            out_file.seek(SeekFrom::Start(
-                op.dst_extents[0].start_block.unwrap_or(0) * block_size,
-            ))?;
+            out_file
+                .seek(SeekFrom::Start(op.dst_extents[0].start_block.unwrap_or(0) * block_size))?;
             out_file.write_all(&data)?;
         }
         install_operation::Type::SourceCopy => {
@@ -167,7 +207,6 @@ pub fn process_operation(
             let old_file = old_file
                 .ok_or_else(|| anyhow!("BROTLI_BSDIFF requires differential OTA support"))?;
 
-            // Step 1: Decompress the patch data using Brotli
             let mut decompressed_patch = Vec::new();
             let decompression_result =
                 brotli::Decompressor::new(&data[..], 4096).read_to_end(&mut decompressed_patch);
@@ -183,7 +222,6 @@ pub fn process_operation(
                 }
             };
 
-            // Step 2: Read old data from source extents
             let mut old_data = Vec::new();
             for ext in &op.src_extents {
                 old_file.seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
@@ -192,7 +230,6 @@ pub fn process_operation(
                 old_data.extend_from_slice(&buffer);
             }
 
-            // Step 3: Apply bsdiff with decompressed patch
             let new_data = match bspatch(&old_data, &decompressed_patch) {
                 Ok(new_data) => new_data,
                 Err(e) => {
@@ -204,7 +241,6 @@ pub fn process_operation(
                 }
             };
 
-            // Step 4: Write to destination extents
             let mut pos = 0;
             for ext in &op.dst_extents {
                 let ext_size = (ext.num_blocks.unwrap_or(0) * block_size) as usize;
@@ -227,7 +263,6 @@ pub fn process_operation(
             let old_file = old_file
                 .ok_or_else(|| anyhow!("LZ4DIFF_BSDIFF requires differential OTA support"))?;
 
-            // Step 1: Decompress the patch data using LZ4
             let decompressed_patch = match lz4_flex::block::decompress_size_prepended(&data) {
                 Ok(decompressed) => decompressed,
                 Err(e) => {
@@ -239,7 +274,6 @@ pub fn process_operation(
                 }
             };
 
-            // Step 2: Read old data from source extents
             let mut old_data = Vec::new();
             for ext in &op.src_extents {
                 old_file.seek(SeekFrom::Start(ext.start_block.unwrap_or(0) * block_size))?;
@@ -248,7 +282,6 @@ pub fn process_operation(
                 old_data.extend_from_slice(&buffer);
             }
 
-            // Step 3: Apply bsdiff with decompressed patch
             let new_data = match bspatch(&old_data, &decompressed_patch) {
                 Ok(new_data) => new_data,
                 Err(e) => {
@@ -260,7 +293,6 @@ pub fn process_operation(
                 }
             };
 
-            // Step 4: Write to destination extents
             let mut pos = 0;
             for ext in &op.dst_extents {
                 let ext_size = (ext.num_blocks.unwrap_or(0) * block_size) as usize;
@@ -307,12 +339,12 @@ pub fn process_operation(
     Ok(())
 }
 
-pub fn dump_partition(
+pub fn dump_partition<P: PayloadRead>(
     partition: &PartitionUpdate,
     data_offset: u64,
     block_size: u64,
     args: &Args,
-    payload_file: &mut (impl Read + Seek),
+    payload_file: &P,
     multi_progress: Option<&MultiProgress>,
 ) -> Result<()> {
     let partition_name = &partition.partition_name;
@@ -337,11 +369,11 @@ pub fn dump_partition(
     let mut out_file = File::create(&out_path)?;
 
     if let Some(info) = &partition.new_partition_info {
-    if let Some(size) = info.size {
-        out_file.set_len(size)?;
-    } else {
-        return Err(anyhow!("Partition size is missing"));
-    }
+        if let Some(size) = info.size {
+            out_file.set_len(size)?;
+        } else {
+            return Err(anyhow!("Partition size is missing"));
+        }
     }
 
     #[cfg(feature = "differential_ota")]
@@ -350,15 +382,10 @@ pub fn dump_partition(
         let mut file = File::open(&old_path)
             .with_context(|| format!("Failed to open original image: {:?}", old_path))?;
 
-        // Verify old partition hash if available
-        if let Some(old_partition_info) = &partition.old_partition_info {
-            if let Err(e) = verify_old_partition(&mut file, old_partition_info) {
-                return Err(anyhow!(
-                    "Old partition verification failed for {}: {}",
-                    partition_name,
-                    e
-                ));
-            }
+        if let Some(old_partition_info) = &partition.old_partition_info
+            && let Err(e) = verify_old_partition(&mut file, old_partition_info)
+        {
+            return Err(anyhow!("Old partition verification failed for {}: {}", partition_name, e));
         }
 
         Some(file)
@@ -386,10 +413,7 @@ pub fn dump_partition(
         }
     }
     if let Some(pb) = progress_bar {
-        pb.finish_with_message(format!(
-            "✓ Completed {} ({} ops)",
-            partition_name, total_ops
-        ));
+        pb.finish_with_message(format!("✓ Completed {} ({} ops)", partition_name, total_ops));
     }
     Ok(())
 }
@@ -411,7 +435,7 @@ pub fn create_payload_reader(path: &PathBuf) -> Result<Box<dyn ReadSeek>> {
                     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
                         let start = self.position as usize;
                         if start >= self.mmap.len() {
-                            return Ok(0); // EOF
+                            return Ok(0);
                         }
 
                         let end = std::cmp::min(start + buf.len(), self.mmap.len());
