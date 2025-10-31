@@ -1,3 +1,4 @@
+#![allow(unused)]
 mod module;
 use std::collections::HashSet;
 use std::fs::{self, File};

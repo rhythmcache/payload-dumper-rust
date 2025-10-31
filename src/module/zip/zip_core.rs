@@ -1,3 +1,4 @@
+#![allow(unused)]
 use anyhow::{Result, anyhow};
 use std::io::{Read, Seek, SeekFrom};
 
