@@ -1,13 +1,24 @@
-use crate::module::zip::zip_core::{ZipEntry, ZipParser};
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind, Read, Result as IoResult, Seek, SeekFrom};
 use std::path::Path;
+use std::sync::Arc;
+
+use positioned_io::ReadAt;
+
+use crate::module::zip::zip_core::{ZipEntry, ZipParser};
 
 pub struct ZipDecoder<R: Read + Seek> {
     reader: R,
     entries: HashMap<String, ZipEntry>,
 }
 
+// Positioned I/O using Arc<File>
+pub struct SharedZipPayloadReader {
+    file: Arc<std::fs::File>,
+    payload_entry: ZipEntry,
+}
+
+// sequential access
 pub struct ZipPayloadReader<R: Read + Seek> {
     decoder: ZipDecoder<R>,
     current_entry: Option<ZipEntry>,
@@ -16,14 +27,67 @@ pub struct ZipPayloadReader<R: Read + Seek> {
 
 pub type FileZipPayloadReader = ZipPayloadReader<std::fs::File>;
 
+// positioned I/O for shared ZIP reader
+impl SharedZipPayloadReader {
+    pub fn new<P: AsRef<Path>>(path: P) -> IoResult<Self> {
+        let mut file = std::fs::File::open(path.as_ref())?;
+
+        // read ZIP metadata
+        let entries = ZipDecoder::<std::fs::File>::read_central_directory(&mut file)?;
+
+        let entry = entries
+            .get("payload.bin")
+            .ok_or_else(|| Error::new(ErrorKind::NotFound, "payload.bin not found in ZIP"))?
+            .clone();
+
+        // get data offset
+        let mut temp_file = std::fs::File::open(path.as_ref())?;
+        let data_offset = ZipParser::get_data_offset(&mut temp_file, &entry)
+            .map_err(|e| Error::new(ErrorKind::InvalidData, e.to_string()))?;
+
+        let mut payload_entry = entry;
+        payload_entry.data_offset = data_offset;
+
+        Ok(Self { file: Arc::new(std::fs::File::open(path)?), payload_entry })
+    }
+
+    // read at a specific offset within payload.bin
+    pub fn read_at_payload(&self, offset: u64, buf: &mut [u8]) -> IoResult<usize> {
+        if offset >= self.payload_entry.uncompressed_size {
+            return Ok(0);
+        }
+
+        let remaining = self.payload_entry.uncompressed_size - offset;
+        let to_read = buf.len().min(remaining as usize);
+
+        // absolute position in ZIP file
+        let file_position = self.payload_entry.data_offset + offset;
+
+        // use positioned read
+        self.file.read_at(file_position, &mut buf[..to_read])
+    }
+}
+
+// payloadRead trait for shared ZIP reader
+impl crate::module::payload_dumper::PayloadRead for SharedZipPayloadReader {
+    fn read_data_at(&self, offset: u64, buf: &mut [u8]) -> IoResult<()> {
+        let mut total_read = 0;
+        while total_read < buf.len() {
+            let n = self.read_at_payload(offset + total_read as u64, &mut buf[total_read..])?;
+            if n == 0 {
+                return Err(Error::new(ErrorKind::UnexpectedEof, "Unexpected EOF"));
+            }
+            total_read += n;
+        }
+        Ok(())
+    }
+}
+
+// sequential implementation
 impl<R: Read + Seek> ZipPayloadReader<R> {
     pub fn new(reader: R) -> IoResult<Self> {
         let decoder = ZipDecoder::new(reader)?;
-        Ok(ZipPayloadReader {
-            decoder,
-            current_entry: None,
-            current_position: 0,
-        })
+        Ok(ZipPayloadReader { decoder, current_entry: None, current_position: 0 })
     }
 
     pub fn load_payload_entry(&mut self) -> IoResult<()> {
@@ -36,10 +100,7 @@ impl<R: Read + Seek> ZipPayloadReader<R> {
             self.current_position = 0;
             Ok(())
         } else {
-            Err(Error::new(
-                ErrorKind::NotFound,
-                "payload.bin not found in the zip",
-            ))
+            Err(Error::new(ErrorKind::NotFound, "payload.bin not found in the zip"))
         }
     }
 }
@@ -50,10 +111,6 @@ impl FileZipPayloadReader {
         let mut reader = Self::new(file)?;
         reader.load_payload_entry()?;
         Ok(reader)
-    }
-
-    pub fn new_for_parallel<P: AsRef<Path>>(path: P) -> IoResult<Self> {
-        Self::from_file(path)
     }
 }
 
@@ -113,10 +170,7 @@ impl<R: Read + Seek> Seek for ZipPayloadReader<R> {
         };
 
         if new_position > entry.uncompressed_size {
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                "Seek beyond end of data",
-            ));
+            return Err(Error::new(ErrorKind::InvalidInput, "Seek beyond end of data"));
         }
 
         self.current_position = new_position;

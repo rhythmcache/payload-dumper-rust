@@ -1,23 +1,23 @@
-use crate::InstallOperation;
-pub use crate::PartitionUpdate;
-use crate::ReadSeek;
-use crate::install_operation;
-use crate::module::args::Args;
-#[cfg(feature = "differential_ota")]
-use crate::module::patch::bspatch;
-#[cfg(feature = "differential_ota")]
-use crate::module::verify::verify_old_partition;
+use std::fs::{self, File};
+use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
+use std::path::PathBuf;
+use std::sync::Arc; // NEW
+use std::time::Duration;
+
 #[cfg(feature = "differential_ota")]
 use anyhow::Context;
 use anyhow::{Result, anyhow};
 use bzip2::read::BzDecoder;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use positioned_io::ReadAt; // NEW
-use std::fs::{self, File};
-use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
-use std::path::PathBuf;
-use std::sync::Arc; // NEW
-use std::time::Duration;
+
+pub use crate::PartitionUpdate;
+use crate::module::args::Args;
+#[cfg(feature = "differential_ota")]
+use crate::module::patch::bspatch;
+#[cfg(feature = "differential_ota")]
+use crate::module::verify::verify_old_partition;
+use crate::{InstallOperation, ReadSeek, install_operation};
 
 // PayloadRead Trait
 pub trait PayloadRead: Send + Sync {
@@ -57,7 +57,6 @@ impl<'a> PayloadRead for OwnedReader<'a> {
 unsafe impl<'a> Send for OwnedReader<'a> {}
 unsafe impl<'a> Sync for OwnedReader<'a> {}
 
-
 pub fn process_operation<P: PayloadRead>(
     operation_index: usize,
     op: &InstallOperation,
@@ -71,7 +70,6 @@ pub fn process_operation<P: PayloadRead>(
     let offset = data_offset + op.data_offset.unwrap_or(0);
     let mut data = vec![0u8; op.data_length.unwrap_or(0) as usize];
     payload_file.read_data_at(offset, &mut data)?;
-
 
     match op.r#type() {
         install_operation::Type::ReplaceXz => match liblzma::decode_all(Cursor::new(&data)) {
@@ -138,9 +136,8 @@ pub fn process_operation<P: PayloadRead>(
             }
         }
         install_operation::Type::Replace => {
-            out_file.seek(SeekFrom::Start(
-                op.dst_extents[0].start_block.unwrap_or(0) * block_size,
-            ))?;
+            out_file
+                .seek(SeekFrom::Start(op.dst_extents[0].start_block.unwrap_or(0) * block_size))?;
             out_file.write_all(&data)?;
         }
         install_operation::Type::SourceCopy => {
@@ -347,7 +344,7 @@ pub fn dump_partition<P: PayloadRead>(
     data_offset: u64,
     block_size: u64,
     args: &Args,
-    payload_file: &P, 
+    payload_file: &P,
     multi_progress: Option<&MultiProgress>,
 ) -> Result<()> {
     let partition_name = &partition.partition_name;
@@ -385,14 +382,10 @@ pub fn dump_partition<P: PayloadRead>(
         let mut file = File::open(&old_path)
             .with_context(|| format!("Failed to open original image: {:?}", old_path))?;
 
-        if let Some(old_partition_info) = &partition.old_partition_info {
-            if let Err(e) = verify_old_partition(&mut file, old_partition_info) {
-                return Err(anyhow!(
-                    "Old partition verification failed for {}: {}",
-                    partition_name,
-                    e
-                ));
-            }
+        if let Some(old_partition_info) = &partition.old_partition_info
+            && let Err(e) = verify_old_partition(&mut file, old_partition_info)
+        {
+            return Err(anyhow!("Old partition verification failed for {}: {}", partition_name, e));
         }
 
         Some(file)
@@ -409,7 +402,7 @@ pub fn dump_partition<P: PayloadRead>(
             op,
             data_offset,
             block_size,
-            payload_file, 
+            payload_file,
             &mut out_file,
             old_file.as_mut().map(|f| f as &mut dyn ReadSeek),
         )?;
@@ -420,10 +413,7 @@ pub fn dump_partition<P: PayloadRead>(
         }
     }
     if let Some(pb) = progress_bar {
-        pb.finish_with_message(format!(
-            "✓ Completed {} ({} ops)",
-            partition_name, total_ops
-        ));
+        pb.finish_with_message(format!("✓ Completed {} ({} ops)", partition_name, total_ops));
     }
     Ok(())
 }

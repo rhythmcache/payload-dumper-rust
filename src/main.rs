@@ -1,25 +1,4 @@
 mod module;
-use crate::module::args::Args;
-#[cfg(feature = "remote_ota")]
-use crate::module::http::HttpReader;
-#[cfg(feature = "metadata")]
-use crate::module::metadata::save_metadata;
-use crate::module::payload_dumper::{OwnedReader, create_payload_reader, dump_partition};
-use crate::module::utils::list_partitions;
-use crate::module::utils::{format_elapsed_time, format_size, is_differential_ota};
-use crate::module::verify::verify_partitions_hash;
-#[cfg(feature = "local_zip")]
-use crate::module::zip::local_zip::ZipPayloadReader;
-#[cfg(feature = "remote_ota")]
-use crate::module::zip::remote_zip::RemoteZipReader;
-use anyhow::{Result, anyhow};
-use byteorder::{BigEndian, ReadBytesExt};
-use clap::Parser;
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-#[cfg(feature = "remote_ota")]
-use lazy_static::lazy_static;
-use prost::Message;
-use rayon::prelude::*;
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
@@ -29,6 +8,32 @@ use std::sync::atomic::AtomicBool;
 #[cfg(feature = "remote_ota")]
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
+
+use anyhow::{Result, anyhow};
+use byteorder::{BigEndian, ReadBytesExt};
+use clap::Parser;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+#[cfg(feature = "remote_ota")]
+use lazy_static::lazy_static;
+use prost::Message;
+use rayon::prelude::*;
+
+use crate::module::args::Args;
+#[cfg(feature = "remote_ota")]
+use crate::module::http::HttpReader;
+#[cfg(feature = "metadata")]
+use crate::module::metadata::save_metadata;
+use crate::module::payload_dumper::{OwnedReader, create_payload_reader, dump_partition};
+use crate::module::utils::{
+    format_elapsed_time, format_size, is_differential_ota, list_partitions,
+};
+use crate::module::verify::verify_partitions_hash;
+#[cfg(feature = "local_zip")]
+use crate::module::zip::local_zip::SharedZipPayloadReader;
+#[cfg(feature = "local_zip")]
+use crate::module::zip::local_zip::ZipPayloadReader;
+#[cfg(feature = "remote_ota")]
+use crate::module::zip::remote_zip::RemoteZipReader;
 
 #[cfg(feature = "remote_ota")]
 lazy_static! {
@@ -59,9 +64,7 @@ fn main() -> Result<()> {
         num_cpus::get()
     };
 
-    rayon::ThreadPoolBuilder::new()
-        .num_threads(thread_count)
-        .build_global()?;
+    rayon::ThreadPoolBuilder::new().num_threads(thread_count).build_global()?;
 
     println!("- Initialized {} thread(s)", thread_count);
 
@@ -69,11 +72,7 @@ fn main() -> Result<()> {
 
     let multi_progress = MultiProgress::new();
     let main_pb = multi_progress.add(ProgressBar::new_spinner());
-    main_pb.set_style(
-        ProgressStyle::default_spinner()
-            .template("{spinner:.blue} {msg}")
-            .unwrap(),
-    );
+    main_pb.set_style(ProgressStyle::default_spinner().template("{spinner:.blue} {msg}").unwrap());
     main_pb.enable_steady_tick(Duration::from_millis(100));
     let payload_path_str = args.payload_path.to_string_lossy().to_string();
 
@@ -112,23 +111,22 @@ fn main() -> Result<()> {
 
     main_pb.set_message("Opening file...");
 
-    if !is_url {
-        if let Ok(metadata) = fs::metadata(&args.payload_path) {
-            if metadata.len() > 1024 * 1024 {
-                if is_stdout {
-                    eprintln!(
-                        "- Processing file: {}, size: {}",
-                        payload_path_str,
-                        format_size(metadata.len())
-                    );
-                } else {
-                    println!(
-                        "- Processing file: {}, size: {}",
-                        payload_path_str,
-                        format_size(metadata.len())
-                    );
-                }
-            }
+    if !is_url
+        && let Ok(metadata) = fs::metadata(&args.payload_path)
+        && metadata.len() > 1024 * 1024
+    {
+        if is_stdout {
+            eprintln!(
+                "- Processing file: {}, size: {}",
+                payload_path_str,
+                format_size(metadata.len())
+            );
+        } else {
+            println!(
+                "- Processing file: {}, size: {}",
+                payload_path_str,
+                format_size(metadata.len())
+            );
         }
     }
 
@@ -226,10 +224,7 @@ fn main() -> Result<()> {
     }
     let file_format_version = payload_reader.read_u64::<BigEndian>()?;
     if file_format_version != 2 {
-        return Err(anyhow!(
-            "Unsupported payload version: {}",
-            file_format_version
-        ));
+        return Err(anyhow!("Unsupported payload version: {}", file_format_version));
     }
     let manifest_size = payload_reader.read_u64::<BigEndian>()?;
     let metadata_signature_size = payload_reader.read_u32::<BigEndian>()?;
@@ -276,10 +271,7 @@ fn main() -> Result<()> {
                 if is_stdout {
                     println!("{}", json);
                 } else {
-                    println!(
-                        "✓ Metadata saved to: {}/payload_metadata.json",
-                        args.out.display()
-                    );
+                    println!("✓ Metadata saved to: {}/payload_metadata.json", args.out.display());
                 }
                 multi_progress.clear()?;
                 return Ok(());
@@ -325,21 +317,14 @@ fn main() -> Result<()> {
         manifest.partitions.iter().collect()
     } else {
         let images = args.images.split(',').collect::<HashSet<_>>();
-        manifest
-            .partitions
-            .iter()
-            .filter(|p| images.contains(p.partition_name.as_str()))
-            .collect()
+        manifest.partitions.iter().filter(|p| images.contains(p.partition_name.as_str())).collect()
     };
     if partitions_to_extract.is_empty() {
         main_pb.finish_with_message("No partitions to extract");
         multi_progress.clear()?;
         return Ok(());
     }
-    main_pb.set_message(format!(
-        "Found {} partitions to extract",
-        partitions_to_extract.len()
-    ));
+    main_pb.set_message(format!("Found {} partitions to extract", partitions_to_extract.len()));
 
     let use_parallel = (is_url
         || is_local_zip
@@ -359,33 +344,34 @@ fn main() -> Result<()> {
         None
     };
 
+    // Create shared ZIP reader for local ZIP files in parallel mode
+    #[cfg(feature = "local_zip")]
+    let shared_zip_reader: Option<SharedZipPayloadReader> = if is_local_zip && use_parallel {
+        Some(SharedZipPayloadReader::new(&args.payload_path)?)
+    } else {
+        None
+    };
+
+    #[cfg(not(feature = "local_zip"))]
+    let shared_zip_reader: Option<()> = None;
+
     let multi_progress = Arc::new(multi_progress);
     let args = Arc::new(args);
 
     let mut failed_partitions = Vec::new();
 
     if use_parallel {
-        #[cfg(feature = "local_zip")]
-        let payload_path = Arc::new(args.payload_path.to_str().unwrap_or_default().to_string());
         #[cfg(feature = "remote_ota")]
-        let payload_url = Arc::new(if is_url {
-            payload_path_str.clone()
-        } else {
-            String::new()
-        });
+        let payload_url = Arc::new(if is_url { payload_path_str.clone() } else { String::new() });
 
         let max_retries = 3;
         let num_cpus = num_cpus::get();
         let chunk_size = std::cmp::max(1, partitions_to_extract.len() / num_cpus);
 
-        let active_readers = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let max_concurrent_readers = num_cpus;
-
         let results: Vec<_> = partitions_to_extract
             .par_chunks(chunk_size)
             .flat_map(|chunk| {
                 chunk.par_iter().map(|partition| {
-                    let active_readers = Arc::clone(&active_readers);
                     let partition_name = partition.partition_name.clone();
 
                     (0..max_retries)
@@ -395,9 +381,8 @@ fn main() -> Result<()> {
                                 std::thread::sleep(Duration::from_millis(delay));
                             }
 
-                            // Check if we should use shared reader
+                            // Check if we should use shared .bin reader
                             if let Some(shared_reader) = &shared_bin_reader {
-                                // Use shared reader for local .bin files
                                 return match dump_partition(
                                     partition,
                                     data_offset,
@@ -417,59 +402,48 @@ fn main() -> Result<()> {
                                 };
                             }
 
-                            let needs_reader_limit = !is_url && is_local_zip;
-
-                            if needs_reader_limit {
-                                let current =
-                                    active_readers.load(std::sync::atomic::Ordering::SeqCst);
-                                if current >= max_concurrent_readers {
-                                    while active_readers.load(std::sync::atomic::Ordering::SeqCst)
-                                        >= max_concurrent_readers
-                                    {
-                                        std::thread::sleep(Duration::from_millis(10));
+                            // Check if we should use shared ZIP reader
+                            #[cfg(feature = "local_zip")]
+                            if let Some(shared_reader) = &shared_zip_reader {
+                                return match dump_partition(
+                                    partition,
+                                    data_offset,
+                                    block_size as u64,
+                                    &args,
+                                    shared_reader,
+                                    Some(&multi_progress),
+                                ) {
+                                    Ok(()) => Some(Ok(())),
+                                    Err(e) => {
+                                        if attempt == max_retries - 1 {
+                                            Some(Err((partition_name.clone(), e)))
+                                        } else {
+                                            None
+                                        }
                                     }
-                                }
-
-                                active_readers.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                                };
                             }
 
-                            let reader_result =
-                                if is_url {
-                                    #[cfg(feature = "remote_ota")]
-                                    {
-                                        RemoteZipReader::new_for_parallel_with_user_agent(
-                                            (*payload_url).clone(),
-                                            args.user_agent.as_deref(),
-                                        )
-                                        .map(|reader| Box::new(reader) as Box<dyn ReadSeek>)
-                                    }
-                                    #[cfg(not(feature = "remote_ota"))]
-                                    {
-                                        Err(anyhow!("Remote OTA feature not enabled"))
-                                    }
-                                } else if is_local_zip {
-                                    #[cfg(feature = "local_zip")]
-                                    {
-                                        let result = ZipPayloadReader::new_for_parallel(
-                                            (*payload_path).clone(),
-                                        )
-                                        .map(|reader| Box::new(reader) as Box<dyn ReadSeek>)
-                                        .map_err(|e| {
-                                            anyhow::anyhow!("Failed to create ZIP reader: {}", e)
-                                        });
-                                        active_readers
-                                            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-                                        result
-                                    }
-                                    #[cfg(not(feature = "local_zip"))]
-                                    {
-                                        Err(anyhow!("Local ZIP feature not enabled"))
-                                    }
-                                } else {
-                                    create_payload_reader(&args.payload_path).map_err(|e| {
-                                        anyhow::anyhow!("Failed to create payload reader: {}", e)
-                                    })
-                                };
+                            // For remote files, create per-thread readers
+                            let reader_result = if is_url {
+                                #[cfg(feature = "remote_ota")]
+                                {
+                                    RemoteZipReader::new_for_parallel_with_user_agent(
+                                        (*payload_url).clone(),
+                                        args.user_agent.as_deref(),
+                                    )
+                                    .map(|reader| Box::new(reader) as Box<dyn ReadSeek>)
+                                }
+                                #[cfg(not(feature = "remote_ota"))]
+                                {
+                                    Err(anyhow!("Remote OTA feature not enabled"))
+                                }
+                            } else {
+                                // Fallback for any other case (shouldn't happen with current logic)
+                                create_payload_reader(&args.payload_path).map_err(|e| {
+                                    anyhow::anyhow!("Failed to create payload reader: {}", e)
+                                })
+                            };
 
                             let mut reader = match reader_result {
                                 Ok(reader) => reader,
@@ -482,7 +456,7 @@ fn main() -> Result<()> {
                                 }
                             };
 
-                            // Wrap reader with OwnedReader
+                            // Use OwnedReader wrapper for non-shared readers
                             let owned = OwnedReader::new(&mut reader);
                             match dump_partition(
                                 partition,
@@ -539,7 +513,6 @@ fn main() -> Result<()> {
                 .iter()
                 .filter(|p| failed_partitions.contains(&p.partition_name))
             {
-                // Wrap reader with OwnedReader
                 let owned = OwnedReader::new(&mut reader);
                 if let Err(e) = dump_partition(
                     partition,
@@ -559,7 +532,7 @@ fn main() -> Result<()> {
             failed_partitions = remaining_failed_partitions;
         }
     } else {
-        // Wrap reader with OwnedReader in sequential mode
+        // Sequential mode
         for partition in &partitions_to_extract {
             let owned = OwnedReader::new(&mut payload_reader);
             if let Err(e) = dump_partition(
@@ -570,10 +543,7 @@ fn main() -> Result<()> {
                 &owned,
                 Some(&multi_progress),
             ) {
-                eprintln!(
-                    "Failed to process partition {}: {}",
-                    partition.partition_name, e
-                );
+                eprintln!("Failed to process partition {}: {}", partition.partition_name, e);
                 failed_partitions.push(partition.partition_name.clone());
             }
         }
