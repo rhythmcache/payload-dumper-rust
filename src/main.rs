@@ -4,7 +4,7 @@ use crate::module::args::Args;
 use crate::module::http::HttpReader;
 #[cfg(feature = "metadata")]
 use crate::module::metadata::save_metadata;
-use crate::module::payload_dumper::{create_payload_reader, dump_partition};
+use crate::module::payload_dumper::{OwnedReader, create_payload_reader, dump_partition};
 use crate::module::utils::list_partitions;
 use crate::module::utils::{format_elapsed_time, format_size, is_differential_ota};
 use crate::module::verify::verify_partitions_hash;
@@ -98,6 +98,9 @@ fn main() -> Result<()> {
     // Check if it's a local ZIP file
     let is_local_zip =
         !is_url && args.payload_path.extension().and_then(|e| e.to_str()) == Some("zip");
+
+    // Check if it's a local .bin file
+    let is_local_bin = !is_url && !is_local_zip;
 
     // Validate local ZIP usage when feature is disabled
     #[cfg(not(feature = "local_zip"))]
@@ -348,6 +351,14 @@ fn main() -> Result<()> {
     } else {
         "Processing partitions..."
     });
+
+    // Create shared reader for local .bin files in parallel mode
+    let shared_bin_reader: Option<Arc<File>> = if is_local_bin && use_parallel {
+        Some(Arc::new(File::open(&args.payload_path)?))
+    } else {
+        None
+    };
+
     let multi_progress = Arc::new(multi_progress);
     let args = Arc::new(args);
 
@@ -382,6 +393,28 @@ fn main() -> Result<()> {
                             if attempt > 0 {
                                 let delay = 100 * (1 << attempt.min(4));
                                 std::thread::sleep(Duration::from_millis(delay));
+                            }
+
+                            // Check if we should use shared reader
+                            if let Some(shared_reader) = &shared_bin_reader {
+                                // Use shared reader for local .bin files
+                                return match dump_partition(
+                                    partition,
+                                    data_offset,
+                                    block_size as u64,
+                                    &args,
+                                    shared_reader,
+                                    Some(&multi_progress),
+                                ) {
+                                    Ok(()) => Some(Ok(())),
+                                    Err(e) => {
+                                        if attempt == max_retries - 1 {
+                                            Some(Err((partition_name.clone(), e)))
+                                        } else {
+                                            None
+                                        }
+                                    }
+                                };
                             }
 
                             let needs_reader_limit = !is_url && is_local_zip;
@@ -423,7 +456,7 @@ fn main() -> Result<()> {
                                         .map(|reader| Box::new(reader) as Box<dyn ReadSeek>)
                                         .map_err(|e| {
                                             anyhow::anyhow!("Failed to create ZIP reader: {}", e)
-                                        }); // Convert io::Error to anyhow::Error
+                                        });
                                         active_readers
                                             .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
                                         result
@@ -449,12 +482,14 @@ fn main() -> Result<()> {
                                 }
                             };
 
+                            // Wrap reader with OwnedReader
+                            let owned = OwnedReader::new(&mut reader);
                             match dump_partition(
                                 partition,
                                 data_offset,
                                 block_size as u64,
                                 &args,
-                                &mut reader,
+                                &owned,
                                 Some(&multi_progress),
                             ) {
                                 Ok(()) => Some(Ok(())),
@@ -504,12 +539,14 @@ fn main() -> Result<()> {
                 .iter()
                 .filter(|p| failed_partitions.contains(&p.partition_name))
             {
+                // Wrap reader with OwnedReader
+                let owned = OwnedReader::new(&mut reader);
                 if let Err(e) = dump_partition(
                     partition,
                     data_offset,
                     block_size as u64,
                     &args,
-                    &mut reader,
+                    &owned,
                     Some(&multi_progress),
                 ) {
                     eprintln!(
@@ -522,13 +559,15 @@ fn main() -> Result<()> {
             failed_partitions = remaining_failed_partitions;
         }
     } else {
+        // Wrap reader with OwnedReader in sequential mode
         for partition in &partitions_to_extract {
+            let owned = OwnedReader::new(&mut payload_reader);
             if let Err(e) = dump_partition(
                 partition,
                 data_offset,
                 block_size as u64,
                 &args,
-                &mut payload_reader,
+                &owned,
                 Some(&multi_progress),
             ) {
                 eprintln!(
