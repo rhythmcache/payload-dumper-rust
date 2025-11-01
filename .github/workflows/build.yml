@@ -51,48 +51,34 @@ jobs:
           path: payload_dumper-windows-${{ matrix.arch }}.zip
 
   build-windows-aarch64:
-    runs-on: ubuntu-latest
+    runs-on: windows-11-arm
     steps:
       - uses: actions/checkout@v4
       
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-pc-windows-gnullvm
-      
-      - name: Download and setup LLVM-MinGW
-        run: |
-          wget https://github.com/mstorsjo/llvm-mingw/releases/download/20251007/llvm-mingw-20251007-msvcrt-ubuntu-22.04-x86_64.tar.xz
-          tar -xf llvm-mingw-20251007-msvcrt-ubuntu-22.04-x86_64.tar.xz
-          echo "$(pwd)/llvm-mingw-20251007-msvcrt-ubuntu-22.04-x86_64/bin" >> $GITHUB_PATH
-      
-      - name: Setup cargo config
-        run: |
-          mkdir -p .cargo
-          cat > .cargo/config.toml << 'EOF'
-          [target.aarch64-pc-windows-gnullvm]
-          linker = "aarch64-w64-mingw32-clang"
-          EOF
+          targets: aarch64-pc-windows-msvc
       
       - name: Build
-        run: cargo build --release --target aarch64-pc-windows-gnullvm --features differential_ota
+        run: cargo build --release --target aarch64-pc-windows-msvc --features differential_ota
         env:
-          CC: aarch64-w64-mingw32-clang
-          CXX: aarch64-w64-mingw32-clang++
-          HOST_TRIPLE: aarch64-w64-mingw32
+          RUSTFLAGS: -C target-feature=+crt-static -C link-arg=/LTCG
       
       - name: Generate SHA256
+        shell: bash
         run: |
-          cd target/aarch64-pc-windows-gnullvm/release
+          cd target/aarch64-pc-windows-msvc/release
           sha256sum payload_dumper.exe > sha256sum.txt
       
       - name: Package
+        shell: bash
         run: |
           mkdir package
-          cp target/aarch64-pc-windows-gnullvm/release/payload_dumper.exe package/
-          cp target/aarch64-pc-windows-gnullvm/release/sha256sum.txt package/
+          cp target/aarch64-pc-windows-msvc/release/payload_dumper.exe package/
+          cp target/aarch64-pc-windows-msvc/release/sha256sum.txt package/
           cd package
-          zip ../payload_dumper-windows-aarch64.zip *
+          7z a ../payload_dumper-windows-aarch64.zip *
       
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
