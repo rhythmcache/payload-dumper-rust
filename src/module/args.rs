@@ -136,21 +136,35 @@ pub struct Args {
     #[arg(
         short = 'm',
         long,
-        help = "Save complete metadata as JSON (use --out - to write to stdout)",
+        value_name = "MODE",
+        num_args = 0..=1,
+        default_missing_value = "compact",
+        require_equals = true,
+        help = "Save metadata as JSON. Use '--metadata=full' for detailed info including all operations",
+        long_help = "Save metadata as JSON:\n  \
+                     --metadata        Compact mode (default, ~100KB)\n  \
+                     --metadata=full   Full mode with all operation details (may be large)",
         conflicts_with_all = &["diff", "old", "images"],
         hide = cfg!(not(feature = "metadata"))
     )]
-    pub metadata: bool,
+    pub metadata: Option<String>,
 
     #[cfg(not(feature = "differential_ota"))]
     #[arg(
         short = 'm',
         long,
-        help = "Save complete metadata as JSON (use --out - to write to stdout)",
+        value_name = "MODE",
+        num_args = 0..=1,
+        default_missing_value = "compact",
+        require_equals = true,
+        help = "Save metadata as JSON. Use '--metadata=full' for detailed info including all operations",
+        long_help = "Save metadata as JSON:\n  \
+                     --metadata        Compact mode (default, ~100KB)\n  \
+                     --metadata=full   Full mode with all operation details (may be large)",
         conflicts_with_all = &["images"],
         hide = cfg!(not(feature = "metadata"))
     )]
-    pub metadata: bool,
+    pub metadata: Option<String>,
 
     #[arg(short = 'P', long, help = "Disable parallel extraction")]
     pub no_parallel: bool,

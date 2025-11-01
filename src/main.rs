@@ -50,8 +50,9 @@ fn main() -> Result<()> {
     let args = Args::parse();
 
     // Validate metadata feature usage
+
     #[cfg(not(feature = "metadata"))]
-    if args.metadata {
+    if args.metadata.is_some() {
         return Err(anyhow!(
             "Metadata functionality requires the 'metadata' feature to be enabled. Please recompile with --features metadata"
         ));
@@ -273,25 +274,31 @@ fn main() -> Result<()> {
     }
 
     #[cfg(feature = "metadata")]
-    if args.metadata && !args.list {
-        main_pb.set_message("Extracting metadata...");
+    if let Some(mode) = &args.metadata {
+        if !args.list {
+            main_pb.set_message("Extracting metadata...");
 
-        match save_metadata(&manifest, &args.out, data_offset) {
-            Ok(json) => {
-                if is_stdout {
-                    println!("{}", json);
-                } else {
-                    println!(
-                        "✓ Metadata saved to: {}/payload_metadata.json",
-                        args.out.display()
-                    );
+            let full_mode = mode == "full";
+
+            match save_metadata(&manifest, &args.out, data_offset, full_mode) {
+                Ok(json) => {
+                    if is_stdout {
+                        println!("{}", json);
+                    } else {
+                        let mode_str = if full_mode { " (full mode)" } else { "" };
+                        println!(
+                            "✓ Metadata{} saved to: {}/payload_metadata.json",
+                            mode_str,
+                            args.out.display()
+                        );
+                    }
+                    multi_progress.clear()?;
+                    return Ok(());
                 }
-                multi_progress.clear()?;
-                return Ok(());
-            }
-            Err(e) => {
-                main_pb.finish_with_message("Failed to save metadata");
-                return Err(e);
+                Err(e) => {
+                    main_pb.finish_with_message("Failed to save metadata");
+                    return Err(e);
+                }
             }
         }
     }
@@ -301,15 +308,19 @@ fn main() -> Result<()> {
         multi_progress.clear()?;
 
         #[cfg(feature = "metadata")]
-        if args.metadata {
-            match save_metadata(&manifest, &args.out, data_offset) {
+        if let Some(mode) = &args.metadata {
+            let full_mode = mode == "full";
+
+            match save_metadata(&manifest, &args.out, data_offset, full_mode) {
                 Ok(json) => {
                     if is_stdout {
                         println!("{}", json);
                         return Ok(());
                     } else {
+                        let mode_str = if full_mode { " (full mode)" } else { "" };
                         println!(
-                            "✓ Metadata saved to: {}/payload_metadata.json",
+                            "✓ Metadata{} saved to: {}/payload_metadata.json",
+                            mode_str,
                             args.out.display()
                         );
                     }
