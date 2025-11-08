@@ -16,7 +16,7 @@ pub struct PartitionInfoDetails {
 #[derive(Serialize)]
 pub struct SignatureInfo {
     // #[serde(skip_serializing_if = "Option::is_none")]
-   // pub version: Option<u32>, // deprecated
+    // pub version: Option<u32>, // deprecated
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<String>, // hex encoded
     #[serde(skip_serializing_if = "Option::is_none")]

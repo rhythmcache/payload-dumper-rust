@@ -55,21 +55,21 @@ pub fn format_size(size: u64) -> String {
 
 pub async fn list_partitions(payload_path: &Path) -> Result<()> {
     let mut payload_file = File::open(payload_path).await?;
-    
+
     let mut magic = [0u8; 4];
     payload_file.read_exact(&mut magic).await?;
-    
+
     if magic != *b"CrAU" {
         payload_file.seek(std::io::SeekFrom::Start(0)).await?;
         let mut buffer = [0u8; 1024];
         let mut offset = 0;
-        
+
         while offset < 1024 * 1024 {
             let bytes_read = payload_file.read(&mut buffer).await?;
             if bytes_read == 0 {
                 break;
             }
-            
+
             for i in 0..bytes_read - 3 {
                 if buffer[i] == b'C'
                     && buffer[i + 1] == b'r'
@@ -84,7 +84,7 @@ pub async fn list_partitions(payload_path: &Path) -> Result<()> {
             }
             offset += bytes_read as u64;
         }
-        
+
         return Err(anyhow!("Invalid payload file: magic 'CrAU' not found"));
     }
 
@@ -101,19 +101,19 @@ pub async fn list_partitions(payload_path: &Path) -> Result<()> {
 
     let mut manifest = vec![0u8; manifest_size as usize];
     payload_file.read_exact(&mut manifest).await?;
-    
+
     let manifest = DeltaArchiveManifest::decode(&manifest[..])?;
 
     println!("{:<20} {:<15}", "Partition Name", "Size");
     println!("{}", "-".repeat(35));
-    
+
     for partition in &manifest.partitions {
         let size = partition
             .new_partition_info
             .as_ref()
             .and_then(|info| info.size)
             .unwrap_or(0);
-        
+
         println!(
             "{:<20} {:<15}",
             partition.partition_name,
@@ -124,6 +124,6 @@ pub async fn list_partitions(payload_path: &Path) -> Result<()> {
             }
         );
     }
-    
+
     Ok(())
 }

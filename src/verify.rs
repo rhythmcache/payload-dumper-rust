@@ -1,6 +1,6 @@
+use crate::PartitionUpdate;
 use crate::args::Args;
 use crate::utils::format_size;
-use crate::PartitionUpdate;
 use anyhow::{Context, Result};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use sha2::{Digest, Sha256};
@@ -33,7 +33,7 @@ pub async fn verify_partitions_hash(
 
     let out_dir = &args.out;
     let mut failed_verifications = Vec::new();
-    
+
     // Create progress bars for each partition
     let progress_bars: Vec<_> = partitions
         .iter()
@@ -58,7 +58,7 @@ pub async fn verify_partitions_hash(
             let partition = (*partition).clone();
             let out_dir = out_dir.clone();
             let pb = progress_bars[idx].1.clone();
-            
+
             tokio::spawn(async move {
                 let partition_name = partition.partition_name.clone();
                 let out_path = out_dir.join(format!("{}.img", partition_name));
@@ -70,7 +70,9 @@ pub async fn verify_partitions_hash(
 
                 pb.set_message(format!("Verifying {}", partition_name));
 
-                match verify_partition_hash(&partition_name, &out_path, expected_hash, Some(pb)).await {
+                match verify_partition_hash(&partition_name, &out_path, expected_hash, Some(pb))
+                    .await
+                {
                     Ok(true) => Ok(partition_name),
                     Ok(false) => Err(partition_name),
                     Err(e) => {
@@ -84,7 +86,7 @@ pub async fn verify_partitions_hash(
 
     // Wait for all verification tasks
     let results = futures::future::join_all(tasks).await;
-    
+
     for result in results {
         match result {
             Ok(Err(partition_name)) => {
@@ -129,7 +131,8 @@ async fn verify_partition_hash(
         return Ok(true);
     }
 
-    let mut file = File::open(out_path).await
+    let mut file = File::open(out_path)
+        .await
         .with_context(|| format!("Failed to open {} for hash verification", partition_name))?;
 
     let file_size = file.metadata().await.map(|m| m.len()).unwrap_or(0);

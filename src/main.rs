@@ -11,16 +11,18 @@ use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 mod args;
+mod local_reader;
 mod metadata;
 mod payload_dumper;
+mod structs;
 mod utils;
 mod verify;
-mod structs;
 
 use crate::args::Args;
+use crate::local_reader::LocalAsyncPayloadReader;
 #[cfg(feature = "metadata")]
 use crate::metadata::save_metadata;
-use crate::payload_dumper::{dump_partition, AsyncPayloadReader};
+use crate::payload_dumper::dump_partition;
 use crate::utils::{format_elapsed_time, format_size, is_differential_ota, list_partitions};
 use crate::verify::verify_partitions_hash;
 
@@ -66,7 +68,11 @@ async fn main() -> Result<()> {
 
     // Check if it's a local .bin file
     let is_local_bin = args.payload_path.extension().and_then(|e| e.to_str()) == Some("bin")
-        || args.payload_path.extension().and_then(|e| e.to_str()).is_none();
+        || args
+            .payload_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_none();
 
     if !is_local_bin {
         return Err(anyhow!(
@@ -221,16 +227,16 @@ async fn main() -> Result<()> {
 
     // Determine partitions to extract
     let partitions_to_extract: Vec<PartitionUpdate> = if args.images.is_empty() {
-    manifest.partitions.clone()
-} else {
-    let images = args.images.split(',').collect::<HashSet<_>>();
-    manifest
-        .partitions
-        .iter()
-        .filter(|p| images.contains(p.partition_name.as_str()))
-        .cloned()  // Clone each partition
-        .collect()
-};
+        manifest.partitions.clone()
+    } else {
+        let images = args.images.split(',').collect::<HashSet<_>>();
+        manifest
+            .partitions
+            .iter()
+            .filter(|p| images.contains(p.partition_name.as_str()))
+            .cloned() // Clone each partition
+            .collect()
+    };
 
     if partitions_to_extract.is_empty() {
         main_pb.finish_with_message("No partitions to extract");
@@ -246,13 +252,12 @@ async fn main() -> Result<()> {
     let use_parallel = !args.no_parallel;
 
     main_pb.set_message(if use_parallel {
-        "Extracting Partitions (async parallel)..."
+        "Extracting Partitions..."
     } else {
-        "Processing partitions (async sequential)..."
+        "Processing partitions..."
     });
 
-    // Create shared async payload reader
-    let payload_reader = Arc::new(AsyncPayloadReader::new(args.payload_path.clone()).await?);
+    let payload_reader = Arc::new(LocalAsyncPayloadReader::new(args.payload_path.clone()).await?);
 
     let multi_progress = Arc::new(multi_progress);
     let args = Arc::new(args);
@@ -271,7 +276,7 @@ async fn main() -> Result<()> {
 
             let task = tokio::spawn(async move {
                 let partition_name = partition.partition_name.clone();
-                
+
                 match dump_partition(
                     &partition,
                     data_offset,
