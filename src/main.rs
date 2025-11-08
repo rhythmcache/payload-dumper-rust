@@ -8,7 +8,7 @@ use clap::Parser;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use prost::Message;
 use tokio::fs;
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt, AsyncBufReadExt};
 
 mod args;
 mod local_reader;
@@ -27,6 +27,56 @@ use crate::utils::{format_elapsed_time, format_size, is_differential_ota, list_p
 use crate::verify::verify_partitions_hash;
 
 include!("proto/update_metadata.rs");
+
+/// parse payload from any async reader that supports seeking
+async fn parse_payload<R>(mut reader: R) -> Result<(DeltaArchiveManifest, u64, Vec<u8>, Vec<u8>, u64)>
+where
+    R: AsyncRead + AsyncSeek + Unpin,
+{
+    // start from the beginning of the file/stream
+    reader.seek(std::io::SeekFrom::Start(0)).await?;
+
+    // read and validate magic header
+    let mut magic = [0u8; 4];
+    reader.read_exact(&mut magic).await?;
+    if magic != *b"CrAU" {
+        return Err(anyhow!("Invalid payload file: magic 'CrAU' not found"));
+    }
+
+    // read header information
+    let file_format_version = reader.read_u64().await?;
+    if file_format_version != 2 {
+        return Err(anyhow!(
+            "Unsupported payload version: {}",
+            file_format_version
+        ));
+    }
+
+    let manifest_size = reader.read_u64().await?;
+    let metadata_signature_size = reader.read_u32().await?;
+
+    // read manifest
+    let mut manifest_bytes = vec![0u8; manifest_size as usize];
+    reader.read_exact(&mut manifest_bytes).await?;
+
+    // read metadata signature
+    let mut metadata_signature = vec![0u8; metadata_signature_size as usize];
+    reader.read_exact(&mut metadata_signature).await?;
+
+    // get data offset
+    let data_offset = reader.stream_position().await?;
+
+    // decode manifest
+    let manifest = DeltaArchiveManifest::decode(&manifest_bytes[..])?;
+
+    Ok((manifest, data_offset, magic.to_vec(), metadata_signature, file_format_version))
+}
+
+/// convenience function for file-based usage
+async fn parse_payload_from_file(payload_path: &std::path::Path) -> Result<(DeltaArchiveManifest, u64, Vec<u8>, Vec<u8>, u64)> {
+    let file = tokio::fs::File::open(payload_path).await?;
+    parse_payload(file).await
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -101,47 +151,14 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Open the payload file
-    let mut payload_file = tokio::fs::File::open(&args.payload_path).await?;
-
     if args.out.to_string_lossy() != "-" {
         fs::create_dir_all(&args.out).await?;
     }
 
-    // Read and validate magic header
-    let mut magic = [0u8; 4];
-    payload_file.read_exact(&mut magic).await?;
-    if magic != *b"CrAU" {
-        return Err(anyhow!("Invalid payload file: magic 'CrAU' not found"));
-    }
+    main_pb.set_message("Parsing payload...");
 
-    // Read header information
-    let file_format_version = payload_file.read_u64().await?;
-    if file_format_version != 2 {
-        return Err(anyhow!(
-            "Unsupported payload version: {}",
-            file_format_version
-        ));
-    }
-
-    let manifest_size = payload_file.read_u64().await?;
-    let metadata_signature_size = payload_file.read_u32().await?;
-
-    main_pb.set_message("Reading manifest...");
-
-    // Read manifest
-    let mut manifest = vec![0u8; manifest_size as usize];
-    payload_file.read_exact(&mut manifest).await?;
-
-    // Read metadata signature
-    let mut metadata_signature = vec![0u8; metadata_signature_size as usize];
-    payload_file.read_exact(&mut metadata_signature).await?;
-
-    // Get data offset
-    let data_offset = payload_file.stream_position().await?;
-
-    // Decode manifest
-    let manifest = DeltaArchiveManifest::decode(&manifest[..])?;
+    let (manifest, data_offset, _magic, _metadata_signature, _file_format_version) = 
+        parse_payload_from_file(&args.payload_path).await?;
 
     // Check for differential OTA and abort if found
     if is_differential_ota(&manifest) {
@@ -220,7 +237,8 @@ async fn main() -> Result<()> {
         }
 
         println!();
-        return list_partitions(&args.payload_path).await;
+        list_partitions(&manifest);
+        return Ok(());
     }
 
     let block_size = manifest.block_size.unwrap_or(4096);
@@ -295,7 +313,7 @@ async fn main() -> Result<()> {
             tasks.push(task);
         }
 
-        // Wait for all tasks to complete
+        // wait for all tasks to complete
         let results = futures::future::join_all(tasks).await;
 
         for result in results {
