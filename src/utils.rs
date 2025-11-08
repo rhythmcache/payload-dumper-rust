@@ -1,12 +1,6 @@
 use crate::DeltaArchiveManifest;
 use crate::install_operation;
-use anyhow::{Result, anyhow};
-
-use prost::Message;
-use std::path::Path;
 use std::time::Duration;
-use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 pub fn is_differential_ota(manifest: &DeltaArchiveManifest) -> bool {
     manifest.partitions.iter().any(|partition| {
