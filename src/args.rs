@@ -79,23 +79,6 @@ pub struct Args {
     )]
     pub user_agent: Option<String>,
 
-    #[cfg(feature = "differential_ota")]
-    #[arg(
-        short = 'd',
-        long,
-        help = "Enable differential OTA mode (requires --old)"
-    )]
-    pub diff: bool,
-
-    #[cfg(feature = "differential_ota")]
-    #[arg(
-        short = 'O',
-        long,
-        default_value = "old",
-        help = "Path to directory containing old partition images (required for --diff)"
-    )]
-    pub old: PathBuf,
-
     #[arg(
         short = 'i',
         long,
@@ -114,16 +97,6 @@ pub struct Args {
     )]
     pub threads: Option<usize>,
 
-    #[cfg(feature = "differential_ota")]
-    #[arg(
-        short = 'l',
-        long,
-        conflicts_with_all = &["diff", "old", "images", "threads"],
-        help = "List available partitions in the payload"
-    )]
-    pub list: bool,
-
-    #[cfg(not(feature = "differential_ota"))]
     #[arg(
         short = 'l',
         long,
@@ -132,24 +105,6 @@ pub struct Args {
     )]
     pub list: bool,
 
-    #[cfg(feature = "differential_ota")]
-    #[arg(
-        short = 'm',
-        long,
-        value_name = "MODE",
-        num_args = 0..=1,
-        default_missing_value = "compact",
-        require_equals = true,
-        help = "Save metadata as JSON. Use '--metadata=full' for detailed info including all operations",
-        long_help = "Save metadata as JSON:\n  \
-                     --metadata        Compact mode (default, ~100KB)\n  \
-                     --metadata=full   Full mode with all operation details (may be large)",
-        conflicts_with_all = &["diff", "old", "images"],
-        hide = cfg!(not(feature = "metadata"))
-    )]
-    pub metadata: Option<String>,
-
-    #[cfg(not(feature = "differential_ota"))]
     #[arg(
         short = 'm',
         long,

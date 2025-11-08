@@ -1,19 +1,15 @@
 use crate::DeltaArchiveManifest;
 use crate::cow_merge_operation;
 use crate::install_operation;
-use crate::module::structs::{
-    ApexInfoMetadata, DynamicPartitionGroupInfo, DynamicPartitionInfo, ExtentInfo,
-    InstallOperationInfo, MergeOperationInfo, OperationTypeStats, PartitionInfoDetails,
-    PartitionMetadata, PayloadMetadata, SignatureInfo, VabcFeatureSetInfo,
-};
-use crate::module::utils::format_size;
+use crate::structs::*;
+use crate::utils::format_size;
 use anyhow::Result;
 use serde_json;
 use std::collections::HashMap;
-use std::fs;
 use std::path::Path;
+use tokio::fs;
 
-pub fn save_metadata(
+pub async fn save_metadata(
     manifest: &DeltaArchiveManifest,
     output_dir: &Path,
     data_offset: u64,
@@ -41,7 +37,7 @@ pub fn save_metadata(
             }
             let end_offset = start_offset + size_in_bytes;
 
-            // extract complete operation details
+            // Extract complete operation details
             let mut operations_list = Vec::new();
             let mut op_type_stats: HashMap<String, (usize, u64)> = HashMap::new();
             let mut total_data_size = 0u64;
@@ -52,9 +48,8 @@ pub fn save_metadata(
                 let op_type_name = op.r#type().as_str_name().to_string();
                 let data_len = op.data_length.unwrap_or(0);
 
-                // only extract full operation details in full mode
+                // Only extract full operation details in full mode
                 if full_mode {
-                    // convert extents
                     let src_extents: Vec<ExtentInfo> = op
                         .src_extents
                         .iter()
@@ -90,7 +85,6 @@ pub fn save_metadata(
                     num_src_extents += op.src_extents.len();
                     num_dst_extents += op.dst_extents.len();
                 } else {
-                    // in compact mode, just count extents
                     num_src_extents += op.src_extents.len();
                     num_dst_extents += op.dst_extents.len();
                 }
@@ -136,7 +130,6 @@ pub fn save_metadata(
                 "none"
             };
 
-            // extract old partition info
             let old_partition_info =
                 partition
                     .old_partition_info
@@ -146,7 +139,6 @@ pub fn save_metadata(
                         hash: old_info.hash.as_ref().map(hex::encode),
                     });
 
-            // extract extent information
             let hash_tree_data_extent =
                 partition
                     .hash_tree_data_extent
@@ -171,7 +163,6 @@ pub fn save_metadata(
                 num_blocks: ext.num_blocks.unwrap_or(0),
             });
 
-            // extract merge operations
             let merge_operations: Vec<MergeOperationInfo> = partition
                 .merge_operations
                 .iter()
@@ -199,12 +190,10 @@ pub fn save_metadata(
                 })
                 .collect();
 
-            // extract signatures
             let new_partition_signatures: Vec<SignatureInfo> = partition
                 .new_partition_signature
                 .iter()
                 .map(|sig| SignatureInfo {
-                   // version: sig.version, // cause deprecated
                     data: sig.data.as_ref().map(hex::encode),
                     unpadded_signature_size: sig.unpadded_signature_size,
                 })
@@ -336,7 +325,7 @@ pub fn save_metadata(
     }
 
     let metadata_path = output_dir.join("payload_metadata.json");
-    fs::write(metadata_path, &json)?;
+    fs::write(metadata_path, &json).await?;
 
     Ok(json)
 }
