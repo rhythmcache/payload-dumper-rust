@@ -53,57 +53,7 @@ pub fn format_size(size: u64) -> String {
     }
 }
 
-pub async fn list_partitions(payload_path: &Path) -> Result<()> {
-    let mut payload_file = File::open(payload_path).await?;
-
-    let mut magic = [0u8; 4];
-    payload_file.read_exact(&mut magic).await?;
-
-    if magic != *b"CrAU" {
-        payload_file.seek(std::io::SeekFrom::Start(0)).await?;
-        let mut buffer = [0u8; 1024];
-        let mut offset = 0;
-
-        while offset < 1024 * 1024 {
-            let bytes_read = payload_file.read(&mut buffer).await?;
-            if bytes_read == 0 {
-                break;
-            }
-
-            for i in 0..bytes_read - 3 {
-                if buffer[i] == b'C'
-                    && buffer[i + 1] == b'r'
-                    && buffer[i + 2] == b'A'
-                    && buffer[i + 3] == b'U'
-                {
-                    payload_file
-                        .seek(std::io::SeekFrom::Start(offset + i as u64))
-                        .await?;
-                    return Box::pin(list_partitions(payload_path)).await;
-                }
-            }
-            offset += bytes_read as u64;
-        }
-
-        return Err(anyhow!("Invalid payload file: magic 'CrAU' not found"));
-    }
-
-    let file_format_version = payload_file.read_u64().await?;
-    if file_format_version != 2 {
-        return Err(anyhow!(
-            "Unsupported payload version: {}",
-            file_format_version
-        ));
-    }
-
-    let manifest_size = payload_file.read_u64().await?;
-    let _metadata_signature_size = payload_file.read_u32().await?;
-
-    let mut manifest = vec![0u8; manifest_size as usize];
-    payload_file.read_exact(&mut manifest).await?;
-
-    let manifest = DeltaArchiveManifest::decode(&manifest[..])?;
-
+pub fn list_partitions(manifest: &DeltaArchiveManifest) {
     println!("{:<20} {:<15}", "Partition Name", "Size");
     println!("{}", "-".repeat(35));
 
@@ -124,6 +74,4 @@ pub async fn list_partitions(payload_path: &Path) -> Result<()> {
             }
         );
     }
-
-    Ok(())
 }
