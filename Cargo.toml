@@ -38,19 +38,19 @@ tokio = { version = "1.48.0", features = ["rt", "rt-multi-thread", "io-util", "t
 futures = "0.3.31"
 async-compression = { version = "0.4.32", features = ["zstd", "xz", "bzip2", "tokio"] }
 async-trait = "0.1.89"
-reqwest = { version = "0.12.24", features = ["rustls-tls-webpki-roots", "stream", "gzip", "http2"], default-features = false }
-tokio-util = { version = "0.7.17", features = ["io"] }
+reqwest = { version = "0.12.24", features = ["rustls-tls-webpki-roots", "stream", "gzip", "http2"], default-features = false, optional = true }
+tokio-util = { version = "0.7.17", features = ["io"], optional = true }
 url = "2.5.7"
 lazy_static = "1.5.0"
 
 [build-dependencies]
 chrono = "0.4.42"
 
-
 [features]
-default = ["metadata"]
+default = ["local_zip", "metadata"]
 metadata = ["dep:serde", "dep:serde_json"]
-
+local_zip = []
+remote_zip = ["local_zip", "dep:reqwest", "dep:tokio-util"]
 
 [profile.release]
 strip = true

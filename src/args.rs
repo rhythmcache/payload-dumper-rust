@@ -75,7 +75,12 @@ pub struct Args {
     #[arg(
         short = 'U',
         long,
-        help = "Custom User-Agent string for HTTP requests (only used with remote URLs)"
+        help = if cfg!(feature = "remote_zip") {
+            "Custom User-Agent string for HTTP requests (only used with remote URLs)"
+        } else {
+            "Custom User-Agent string for HTTP requests [requires remote_zip feature]"
+        },
+        hide = cfg!(not(feature = "remote_zip"))
     )]
     pub user_agent: Option<String>,
 

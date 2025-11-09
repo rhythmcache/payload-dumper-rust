@@ -9,6 +9,7 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use tokio::fs;
 
 mod args;
+#[cfg(feature = "remote_zip")]
 mod http;
 #[cfg(feature = "metadata")]
 mod metadata;
@@ -18,22 +19,25 @@ mod readers;
 mod structs;
 mod utils;
 mod verify;
+#[cfg(any(feature = "local_zip", feature = "remote_zip"))]
 mod zip;
 
 use crate::args::Args;
-use crate::http::HttpReader;
 #[cfg(feature = "metadata")]
 use crate::metadata::save_metadata;
 use crate::payload::payload_dumper::{AsyncPayloadRead, dump_partition};
-use crate::payload::payload_parser::{
-    parse_local_payload, parse_local_zip_payload, parse_remote_payload,
-};
+use crate::payload::payload_parser::parse_local_payload;
+#[cfg(feature = "local_zip")]
+use crate::payload::payload_parser::parse_local_zip_payload;
+#[cfg(feature = "remote_zip")]
+use crate::payload::payload_parser::parse_remote_payload;
 use crate::readers::local_reader::LocalAsyncPayloadReader;
+#[cfg(feature = "local_zip")]
 use crate::readers::local_zip_reader::LocalAsyncZipPayloadReader;
+#[cfg(feature = "remote_zip")]
 use crate::readers::remote_zip_reader::RemoteAsyncZipPayloadReader;
 use crate::utils::{format_elapsed_time, format_size, list_partitions};
 use crate::verify::verify_partitions_hash;
-use crate::zip::zip::ZipParser;
 
 include!("proto/update_metadata.rs");
 
@@ -94,6 +98,21 @@ async fn main() -> Result<()> {
         ));
     }
 
+    // validate feature requirements
+    if is_url {
+        #[cfg(not(feature = "remote_zip"))]
+        return Err(anyhow!(
+            "Remote URL processing requires the 'remote_zip' feature to be enabled. Please recompile with --features remote_zip"
+        ));
+    }
+
+    if is_zip && !is_url {
+        #[cfg(not(feature = "local_zip"))]
+        return Err(anyhow!(
+            "Local ZIP file processing requires the 'local_zip' feature to be enabled. Please recompile with --features local_zip"
+        ));
+    }
+
     main_pb.set_message("Opening file...");
 
     // Get file metadata
@@ -122,34 +141,33 @@ async fn main() -> Result<()> {
     main_pb.set_message("Parsing payload...");
 
     let (manifest, data_offset) = if is_url {
-        if !is_zip {
-            return Err(anyhow!(
-                "Remote URLs must point to ZIP files containing payload.bin\n\
-             Direct .bin URLs are not supported"
-            ));
+        #[cfg(feature = "remote_zip")]
+        {
+            if !is_zip {
+                return Err(anyhow!(
+                    "Remote URLs must point to ZIP files containing payload.bin\n\
+                 Direct .bin URLs are not supported"
+                ));
+            }
+
+            if !is_stdout {
+                println!("- Connecting to remote ZIP archive...");
+            }
+            parse_remote_payload(payload_path_str.clone(), args.user_agent.as_deref()).await?
         }
-
-        if !is_stdout {
-            println!("- Connecting to remote ZIP archive...");
+        #[cfg(not(feature = "remote_zip"))]
+        {
+            unreachable!(); 
         }
-
-        let http_reader =
-            HttpReader::new(payload_path_str.clone(), args.user_agent.as_deref()).await?;
-        let entry = ZipParser::find_payload_entry(&http_reader).await?;
-        let payload_offset = ZipParser::get_data_offset(&http_reader, &entry).await?;
-        ZipParser::verify_payload_magic(&http_reader, payload_offset).await?;
-
-        if !is_stdout {
-            println!(
-                "- Found payload.bin at offset {} in remote ZIP",
-                payload_offset
-            );
-        }
-
-        // Parse using direct read_at instead of AsyncRead
-        parse_remote_payload(&http_reader, payload_offset).await?
     } else if is_zip {
-        parse_local_zip_payload(args.payload_path.clone()).await?
+        #[cfg(feature = "local_zip")]
+        {
+            parse_local_zip_payload(args.payload_path.clone()).await?
+        }
+        #[cfg(not(feature = "local_zip"))]
+        {
+            unreachable!(); 
+        }
     } else {
         // Local .bin file
         parse_local_payload(&args.payload_path).await?
@@ -264,16 +282,33 @@ async fn main() -> Result<()> {
     });
 
     let payload_reader: Arc<dyn AsyncPayloadRead> = if is_url {
-        // Remote URL
-        if !is_stdout {
-            println!("- Preparing remote extraction...");
-        }
-        Arc::new(
-            RemoteAsyncZipPayloadReader::new(payload_path_str.clone(), args.user_agent.as_deref())
+        #[cfg(feature = "remote_zip")]
+        {
+            // Remote URL
+            if !is_stdout {
+                println!("- Preparing remote extraction...");
+            }
+            Arc::new(
+                RemoteAsyncZipPayloadReader::new(
+                    payload_path_str.clone(),
+                    args.user_agent.as_deref(),
+                )
                 .await?,
-        )
+            )
+        }
+        #[cfg(not(feature = "remote_zip"))]
+        {
+            unreachable!(); // This should be caught by the validation above
+        }
     } else if is_zip {
-        Arc::new(LocalAsyncZipPayloadReader::new(args.payload_path.clone()).await?)
+        #[cfg(feature = "local_zip")]
+        {
+            Arc::new(LocalAsyncZipPayloadReader::new(args.payload_path.clone()).await?)
+        }
+        #[cfg(not(feature = "local_zip"))]
+        {
+            unreachable!(); // This should be caught by the validation above
+        }
     } else {
         Arc::new(LocalAsyncPayloadReader::new(args.payload_path.clone()).await?)
     };

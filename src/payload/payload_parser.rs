@@ -1,11 +1,17 @@
 use crate::DeltaArchiveManifest;
+#[cfg(feature = "remote_zip")]
 use crate::http::HttpReader;
+#[cfg(feature = "local_zip")]
 use crate::zip::local_zip_io::LocalZipIO;
+#[cfg(feature = "local_zip")]
 use crate::zip::zip::ZipParser;
 use anyhow::{Result, anyhow};
 use prost::Message;
+#[cfg(feature = "local_zip")]
 use std::path::PathBuf;
+#[cfg(feature = "local_zip")]
 use std::pin::Pin;
+#[cfg(feature = "local_zip")]
 use tokio::fs::File;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt};
 
@@ -55,12 +61,18 @@ where
     Ok((manifest, data_offset))
 }
 
-/// parse payload from remote ZIPs
 /// returns (manifest, data_offset)
+#[cfg(feature = "remote_zip")]
 pub async fn parse_remote_payload(
-    http_reader: &HttpReader,
-    payload_offset: u64,
+    url: String,
+    user_agent: Option<&str>,
 ) -> Result<(DeltaArchiveManifest, u64)> {
+    let http_reader = HttpReader::new(url, user_agent).await?;
+    let entry = ZipParser::find_payload_entry(&http_reader).await?;
+    let payload_offset = ZipParser::get_data_offset(&http_reader, &entry).await?;
+    ZipParser::verify_payload_magic(&http_reader, payload_offset).await?;
+
+    // Now use your existing parse_remote_payload implementation
     let mut pos = payload_offset;
 
     // helper to read and advance position
@@ -72,31 +84,31 @@ pub async fn parse_remote_payload(
 
     // read and validate magic
     let mut magic = [0u8; 4];
-    read_at(http_reader, &mut pos, &mut magic).await?;
+    read_at(&http_reader, &mut pos, &mut magic).await?;
     if &magic != MAGIC {
         return Err(anyhow!("Invalid payload file: magic 'CrAU' not found"));
     }
 
     // read and validate version
     let mut buf = [0u8; 8];
-    read_at(http_reader, &mut pos, &mut buf).await?;
+    read_at(&http_reader, &mut pos, &mut buf).await?;
     let version = u64::from_be_bytes(buf);
     if version != SUPPORTED_VERSION {
         return Err(anyhow!("Unsupported payload version: {}", version));
     }
 
     // read manifest size
-    read_at(http_reader, &mut pos, &mut buf).await?;
+    read_at(&http_reader, &mut pos, &mut buf).await?;
     let manifest_size = u64::from_be_bytes(buf);
 
     // read metadata signature size
     let mut buf4 = [0u8; 4];
-    read_at(http_reader, &mut pos, &mut buf4).await?;
+    read_at(&http_reader, &mut pos, &mut buf4).await?;
     let sig_size = u32::from_be_bytes(buf4);
 
     // read manifest
     let mut manifest_bytes = vec![0u8; manifest_size as usize];
-    read_at(http_reader, &mut pos, &mut manifest_bytes).await?;
+    read_at(&http_reader, &mut pos, &mut manifest_bytes).await?;
 
     // skip signature, advance position
     pos += sig_size as u64;
@@ -119,6 +131,7 @@ pub async fn parse_local_payload(
 }
 
 /// a seekable reader for payload.bin within a ZIP file
+#[cfg(feature = "local_zip")]
 pub struct ZipPayloadFile {
     file: File,
     payload_offset: u64,
@@ -126,6 +139,7 @@ pub struct ZipPayloadFile {
     position: u64,
 }
 
+#[cfg(feature = "local_zip")]
 impl ZipPayloadFile {
     pub async fn new(zip_path: PathBuf) -> Result<Self> {
         let io = LocalZipIO::new(zip_path.clone()).await?;
@@ -144,6 +158,7 @@ impl ZipPayloadFile {
     }
 }
 
+#[cfg(feature = "local_zip")]
 impl AsyncRead for ZipPayloadFile {
     fn poll_read(
         mut self: Pin<&mut Self>,
@@ -171,6 +186,7 @@ impl AsyncRead for ZipPayloadFile {
     }
 }
 
+#[cfg(feature = "local_zip")]
 impl AsyncSeek for ZipPayloadFile {
     fn start_seek(mut self: Pin<&mut Self>, position: std::io::SeekFrom) -> std::io::Result<()> {
         let new_pos = match position {
@@ -216,6 +232,7 @@ impl AsyncSeek for ZipPayloadFile {
 }
 
 /// parse payload from local ZIP file
+#[cfg(feature = "local_zip")]
 pub async fn parse_local_zip_payload(zip_path: PathBuf) -> Result<(DeltaArchiveManifest, u64)> {
     let zip_payload = ZipPayloadFile::new(zip_path).await?;
     parse_payload(zip_payload).await
