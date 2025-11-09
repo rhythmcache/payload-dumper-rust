@@ -3,7 +3,7 @@ use reqwest::{Client, header};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+const DEFAULT_USER_AGENT: &str = env!("DEFAULT_USER_AGENT");
 
 lazy_static::lazy_static! {
     static ref ACCEPT_RANGES_WARNING_SHOWN: AtomicBool = AtomicBool::new(false);
