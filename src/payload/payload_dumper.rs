@@ -203,9 +203,9 @@ pub async fn dump_partition<P: AsyncPayloadRead>(
             ProgressStyle::default_bar()
                 .template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/white}] {percent}% - {msg}")
                 .unwrap()
-                .progress_chars("▰▱△"),
+                .progress_chars("▰▱ "),
         );
-        pb.enable_steady_tick(tokio::time::Duration::from_millis(500));
+        pb.enable_steady_tick(tokio::time::Duration::from_secs(1));
         pb.set_message(format!("Processing {} ({} ops)", partition_name, total_ops));
         Some(pb)
     } else {

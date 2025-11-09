@@ -72,7 +72,7 @@ async fn main() -> Result<()> {
             .template("{spinner:.blue} {msg}")
             .unwrap(),
     );
-    main_pb.enable_steady_tick(tokio::time::Duration::from_millis(100));
+    main_pb.enable_steady_tick(tokio::time::Duration::from_millis(300));
 
     let payload_path_str = args.payload_path.to_string_lossy().to_string();
 
@@ -126,10 +126,10 @@ async fn main() -> Result<()> {
                 format_size(metadata.len())
             );
         } else {
-            println!(
+            main_pb.println(format!(
                 "- Processing file: {}, size: {}",
                 payload_path_str,
-                format_size(metadata.len())
+                format_size(metadata.len()))
             );
         }
     }
@@ -151,7 +151,7 @@ async fn main() -> Result<()> {
             }
 
             if !is_stdout {
-                println!("- Connecting to remote ZIP archive...");
+                main_pb.println("- Connecting to remote ZIP archive...");
             }
             parse_remote_payload(payload_path_str.clone(), args.user_agent.as_deref()).await?
         }
@@ -178,7 +178,7 @@ async fn main() -> Result<()> {
         if is_stdout {
             eprintln!("- Security Patch: {}", security_patch);
         } else {
-            println!("- Security Patch: {}", security_patch);
+            main_pb.println(format!("- Security Patch: {}", security_patch));
         }
     }
 
@@ -187,7 +187,7 @@ async fn main() -> Result<()> {
     if let Some(mode) = &args.metadata
         && !args.list
     {
-        main_pb.set_message("Extracting metadata...");
+        main_pb.println("- Extracting metadata...");
 
         let full_mode = mode == "full";
 
@@ -268,10 +268,11 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    main_pb.set_message(format!(
-        "Found {} partitions to extract",
-        partitions_to_extract.len()
-    ));
+    main_pb.println(format!(
+    "- Found {} partitions to extract",
+    partitions_to_extract.len()
+));
+
 
     let use_parallel = !args.no_parallel;
 
@@ -286,7 +287,7 @@ async fn main() -> Result<()> {
         {
             // Remote URL
             if !is_stdout {
-                println!("- Preparing remote extraction...");
+                main_pb.println("- Preparing remote extraction...");
             }
             Arc::new(
                 RemoteAsyncZipPayloadReader::new(
@@ -388,7 +389,7 @@ async fn main() -> Result<()> {
 
     // Verify partitions
     if !args.no_verify {
-        main_pb.set_message("Verifying partition hashes...");
+        main_pb.println("- Verifying partition hashes...");
 
         let partitions_to_verify: Vec<&PartitionUpdate> = partitions_to_extract
             .iter()
@@ -409,7 +410,7 @@ async fn main() -> Result<()> {
             }
         }
     } else {
-        main_pb.set_message("Hash verification skipped (--no-verify flag)");
+        main_pb.println("- Skipping hash verification");
     }
 
     let elapsed_time = format_elapsed_time(start_time.elapsed());
