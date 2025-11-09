@@ -11,25 +11,30 @@ use tokio::fs;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt};
 
 mod args;
-mod local_reader;
 mod metadata;
 mod payload_dumper;
+mod readers;
 mod structs;
 mod utils;
 mod verify;
+mod zip;
 
 use crate::args::Args;
-use crate::local_reader::LocalAsyncPayloadReader;
 #[cfg(feature = "metadata")]
 use crate::metadata::save_metadata;
+use crate::payload_dumper::AsyncPayloadRead;
 use crate::payload_dumper::dump_partition;
+use crate::readers::local_reader::LocalAsyncPayloadReader;
+use crate::readers::local_zip_reader::{LocalAsyncZipPayloadReader, ZipPayloadFile};
 use crate::utils::{format_elapsed_time, format_size, is_differential_ota, list_partitions};
 use crate::verify::verify_partitions_hash;
 
 include!("proto/update_metadata.rs");
 
 /// parse payload from any async reader that supports seeking
-async fn parse_payload<R>(mut reader: R) -> Result<(DeltaArchiveManifest, u64, Vec<u8>, Vec<u8>, u64)>
+async fn parse_payload<R>(
+    mut reader: R,
+) -> Result<(DeltaArchiveManifest, u64, Vec<u8>, Vec<u8>, u64)>
 where
     R: AsyncRead + AsyncSeek + Unpin,
 {
@@ -69,11 +74,19 @@ where
     // decode manifest
     let manifest = DeltaArchiveManifest::decode(&manifest_bytes[..])?;
 
-    Ok((manifest, data_offset, magic.to_vec(), metadata_signature, file_format_version))
+    Ok((
+        manifest,
+        data_offset,
+        magic.to_vec(),
+        metadata_signature,
+        file_format_version,
+    ))
 }
 
 /// convenience function for file-based usage
-async fn parse_payload_from_file(payload_path: &std::path::Path) -> Result<(DeltaArchiveManifest, u64, Vec<u8>, Vec<u8>, u64)> {
+async fn parse_payload_from_file(
+    payload_path: &std::path::Path,
+) -> Result<(DeltaArchiveManifest, u64, Vec<u8>, Vec<u8>, u64)> {
     let file = tokio::fs::File::open(payload_path).await?;
     parse_payload(file).await
 }
@@ -116,17 +129,19 @@ async fn main() -> Result<()> {
     // Check if we're outputting to stdout
     let is_stdout = args.out.to_string_lossy() == "-";
 
-    // Check if it's a local .bin file
-    let is_local_bin = args.payload_path.extension().and_then(|e| e.to_str()) == Some("bin")
-        || args
-            .payload_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .is_none();
+    // Detect file type
+    let extension = args
+        .payload_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
 
-    if !is_local_bin {
+    let is_zip = extension == "zip";
+    let is_bin = extension == "bin" || extension.is_empty();
+
+    if !is_zip && !is_bin {
         return Err(anyhow!(
-            "Currently only local .bin payload files are supported in async mode"
+            "Unsupported file type. Only .bin and .zip files are supported"
         ));
     }
 
@@ -157,15 +172,15 @@ async fn main() -> Result<()> {
 
     main_pb.set_message("Parsing payload...");
 
-    let (manifest, data_offset, _magic, _metadata_signature, _file_format_version) = 
-        parse_payload_from_file(&args.payload_path).await?;
-
-    // Check for differential OTA and abort if found
-    if is_differential_ota(&manifest) {
-        return Err(anyhow!(
-            "This is a differential OTA package which is not supported. Please use a full OTA package instead."
-        ));
-    }
+    let (manifest, data_offset, _magic, _metadata_signature, _file_format_version) = if is_zip {
+        if !is_stdout {
+            println!("- Detected ZIP archive, locating payload.bin...");
+        }
+        let zip_payload = ZipPayloadFile::new(args.payload_path.clone()).await?;
+        parse_payload(zip_payload).await?
+    } else {
+        parse_payload_from_file(&args.payload_path).await?
+    };
 
     // Print security patch level
     if let Some(security_patch) = &manifest.security_patch_level {
@@ -275,7 +290,14 @@ async fn main() -> Result<()> {
         "Processing partitions..."
     });
 
-    let payload_reader = Arc::new(LocalAsyncPayloadReader::new(args.payload_path.clone()).await?);
+    let payload_reader: Arc<dyn AsyncPayloadRead> = if is_zip {
+        if !is_stdout {
+            println!("- Detected ZIP archive, extracting payload.bin metadata...");
+        }
+        Arc::new(LocalAsyncZipPayloadReader::new(args.payload_path.clone()).await?)
+    } else {
+        Arc::new(LocalAsyncPayloadReader::new(args.payload_path.clone()).await?)
+    };
 
     let multi_progress = Arc::new(multi_progress);
     let args = Arc::new(args);

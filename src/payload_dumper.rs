@@ -28,6 +28,17 @@ impl<T: AsyncPayloadRead> AsyncPayloadRead for Arc<T> {
     }
 }
 
+#[async_trait]
+impl AsyncPayloadRead for Arc<dyn AsyncPayloadRead> {
+    async fn stream_from(
+        &self,
+        offset: u64,
+        length: u64,
+    ) -> Result<Pin<Box<dyn AsyncRead + Send>>> {
+        (**self).stream_from(offset, length).await
+    }
+}
+
 async fn process_operation_streaming<P: AsyncPayloadRead>(
     operation_index: usize,
     op: &InstallOperation,
