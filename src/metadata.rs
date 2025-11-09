@@ -4,7 +4,6 @@ use crate::install_operation;
 use crate::structs::*;
 use crate::utils::format_size;
 use anyhow::Result;
-use serde_json;
 use std::collections::HashMap;
 use std::path::Path;
 use tokio::fs;

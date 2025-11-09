@@ -1,4 +1,4 @@
-use crate::payload_dumper::AsyncPayloadRead;
+use crate::payload::payload_dumper::AsyncPayloadRead;
 use anyhow::Result;
 use async_trait::async_trait;
 use std::path::PathBuf;

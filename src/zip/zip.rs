@@ -11,7 +11,6 @@ pub const ZIP64_EOCD_LOCATOR_SIGNATURE: [u8; 4] = [0x50, 0x4B, 0x06, 0x07];
 #[derive(Debug, Clone)]
 pub struct ZipEntry {
     pub name: String,
-    pub compressed_size: u64,
     pub uncompressed_size: u64,
     pub offset: u64,
     pub compression_method: u16,
@@ -179,13 +178,6 @@ impl ZipParser {
             entry_header[45],
         ]) as u64;
 
-        let mut compressed_size = u32::from_le_bytes([
-            entry_header[20],
-            entry_header[21],
-            entry_header[22],
-            entry_header[23],
-        ]) as u64;
-
         let mut uncompressed_size = u32::from_le_bytes([
             entry_header[24],
             entry_header[25],
@@ -203,10 +195,7 @@ impl ZipParser {
             .await?;
 
         // handle ZIP64 extra fields
-        if local_header_offset == 0xFFFFFFFF
-            || compressed_size == 0xFFFFFFFF
-            || uncompressed_size == 0xFFFFFFFF
-        {
+        if local_header_offset == 0xFFFFFFFF || uncompressed_size == 0xFFFFFFFF {
             let mut pos = 0;
             while pos + 4 <= extra_data.len() {
                 let header_id = u16::from_le_bytes([extra_data[pos], extra_data[pos + 1]]);
@@ -218,20 +207,6 @@ impl ZipParser {
 
                     if uncompressed_size == 0xFFFFFFFF && field_pos + 8 <= pos + 4 + data_size {
                         uncompressed_size = u64::from_le_bytes([
-                            extra_data[field_pos],
-                            extra_data[field_pos + 1],
-                            extra_data[field_pos + 2],
-                            extra_data[field_pos + 3],
-                            extra_data[field_pos + 4],
-                            extra_data[field_pos + 5],
-                            extra_data[field_pos + 6],
-                            extra_data[field_pos + 7],
-                        ]);
-                        field_pos += 8;
-                    }
-
-                    if compressed_size == 0xFFFFFFFF && field_pos + 8 <= pos + 4 + data_size {
-                        compressed_size = u64::from_le_bytes([
                             extra_data[field_pos],
                             extra_data[field_pos + 1],
                             extra_data[field_pos + 2],
@@ -267,7 +242,6 @@ impl ZipParser {
         Ok((
             ZipEntry {
                 name: String::from_utf8_lossy(&filename).into_owned(),
-                compressed_size,
                 uncompressed_size,
                 offset: local_header_offset,
                 compression_method,

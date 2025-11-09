@@ -1,19 +1,5 @@
 use crate::DeltaArchiveManifest;
-use crate::install_operation;
 use std::time::Duration;
-
-pub fn is_differential_ota(manifest: &DeltaArchiveManifest) -> bool {
-    manifest.partitions.iter().any(|partition| {
-        partition.operations.iter().any(|op| {
-            matches!(
-                op.r#type(),
-                install_operation::Type::SourceCopy
-                    | install_operation::Type::SourceBsdiff
-                    | install_operation::Type::BrotliBsdiff
-            )
-        })
-    })
-}
 
 pub fn format_elapsed_time(duration: Duration) -> String {
     let total_secs = duration.as_secs();

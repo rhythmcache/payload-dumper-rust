@@ -8,18 +8,16 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::sync::Mutex;
 
 pub struct LocalZipIO {
-    path: PathBuf,
     file: Arc<Mutex<File>>,
     size: u64,
 }
 
 impl LocalZipIO {
     pub async fn new(path: PathBuf) -> Result<Self> {
-        let mut file = File::open(&path).await?;
+        let file = File::open(&path).await?;
         let size = file.metadata().await?.len();
 
         Ok(Self {
-            path,
             file: Arc::new(Mutex::new(file)),
             size,
         })

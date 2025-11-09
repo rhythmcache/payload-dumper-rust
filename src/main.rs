@@ -6,90 +6,36 @@ use anyhow::{Result, anyhow};
 
 use clap::Parser;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use prost::Message;
 use tokio::fs;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt};
 
 mod args;
+mod http;
+#[cfg(feature = "metadata")]
 mod metadata;
-mod payload_dumper;
+mod payload;
 mod readers;
+#[cfg(feature = "metadata")]
 mod structs;
 mod utils;
 mod verify;
 mod zip;
 
 use crate::args::Args;
+use crate::http::HttpReader;
 #[cfg(feature = "metadata")]
 use crate::metadata::save_metadata;
-use crate::payload_dumper::AsyncPayloadRead;
-use crate::payload_dumper::dump_partition;
+use crate::payload::payload_dumper::{AsyncPayloadRead, dump_partition};
+use crate::payload::payload_parser::{
+    parse_local_payload, parse_local_zip_payload, parse_remote_payload,
+};
 use crate::readers::local_reader::LocalAsyncPayloadReader;
-use crate::readers::local_zip_reader::{LocalAsyncZipPayloadReader, ZipPayloadFile};
-use crate::utils::{format_elapsed_time, format_size, is_differential_ota, list_partitions};
+use crate::readers::local_zip_reader::LocalAsyncZipPayloadReader;
+use crate::readers::remote_zip_reader::RemoteAsyncZipPayloadReader;
+use crate::utils::{format_elapsed_time, format_size, list_partitions};
 use crate::verify::verify_partitions_hash;
+use crate::zip::zip::ZipParser;
 
 include!("proto/update_metadata.rs");
-
-/// parse payload from any async reader that supports seeking
-async fn parse_payload<R>(
-    mut reader: R,
-) -> Result<(DeltaArchiveManifest, u64, Vec<u8>, Vec<u8>, u64)>
-where
-    R: AsyncRead + AsyncSeek + Unpin,
-{
-    // start from the beginning of the file/stream
-    reader.seek(std::io::SeekFrom::Start(0)).await?;
-
-    // read and validate magic header
-    let mut magic = [0u8; 4];
-    reader.read_exact(&mut magic).await?;
-    if magic != *b"CrAU" {
-        return Err(anyhow!("Invalid payload file: magic 'CrAU' not found"));
-    }
-
-    // read header information
-    let file_format_version = reader.read_u64().await?;
-    if file_format_version != 2 {
-        return Err(anyhow!(
-            "Unsupported payload version: {}",
-            file_format_version
-        ));
-    }
-
-    let manifest_size = reader.read_u64().await?;
-    let metadata_signature_size = reader.read_u32().await?;
-
-    // read manifest
-    let mut manifest_bytes = vec![0u8; manifest_size as usize];
-    reader.read_exact(&mut manifest_bytes).await?;
-
-    // read metadata signature
-    let mut metadata_signature = vec![0u8; metadata_signature_size as usize];
-    reader.read_exact(&mut metadata_signature).await?;
-
-    // get data offset
-    let data_offset = reader.stream_position().await?;
-
-    // decode manifest
-    let manifest = DeltaArchiveManifest::decode(&manifest_bytes[..])?;
-
-    Ok((
-        manifest,
-        data_offset,
-        magic.to_vec(),
-        metadata_signature,
-        file_format_version,
-    ))
-}
-
-/// convenience function for file-based usage
-async fn parse_payload_from_file(
-    payload_path: &std::path::Path,
-) -> Result<(DeltaArchiveManifest, u64, Vec<u8>, Vec<u8>, u64)> {
-    let file = tokio::fs::File::open(payload_path).await?;
-    parse_payload(file).await
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -126,10 +72,13 @@ async fn main() -> Result<()> {
 
     let payload_path_str = args.payload_path.to_string_lossy().to_string();
 
-    // Check if we're outputting to stdout
+    let is_url =
+        payload_path_str.starts_with("http://") || payload_path_str.starts_with("https://");
+
+    // check if we're outputting to stdout
     let is_stdout = args.out.to_string_lossy() == "-";
 
-    // Detect file type
+    // detect file type
     let extension = args
         .payload_path
         .extension()
@@ -148,21 +97,21 @@ async fn main() -> Result<()> {
     main_pb.set_message("Opening file...");
 
     // Get file metadata
-    if let Ok(metadata) = fs::metadata(&args.payload_path).await {
-        if metadata.len() > 1024 * 1024 {
-            if is_stdout {
-                eprintln!(
-                    "- Processing file: {}, size: {}",
-                    payload_path_str,
-                    format_size(metadata.len())
-                );
-            } else {
-                println!(
-                    "- Processing file: {}, size: {}",
-                    payload_path_str,
-                    format_size(metadata.len())
-                );
-            }
+    if let Ok(metadata) = fs::metadata(&args.payload_path).await
+        && metadata.len() > 1024 * 1024
+    {
+        if is_stdout {
+            eprintln!(
+                "- Processing file: {}, size: {}",
+                payload_path_str,
+                format_size(metadata.len())
+            );
+        } else {
+            println!(
+                "- Processing file: {}, size: {}",
+                payload_path_str,
+                format_size(metadata.len())
+            );
         }
     }
 
@@ -172,14 +121,38 @@ async fn main() -> Result<()> {
 
     main_pb.set_message("Parsing payload...");
 
-    let (manifest, data_offset, _magic, _metadata_signature, _file_format_version) = if is_zip {
-        if !is_stdout {
-            println!("- Detected ZIP archive, locating payload.bin...");
+    let (manifest, data_offset) = if is_url {
+        if !is_zip {
+            return Err(anyhow!(
+                "Remote URLs must point to ZIP files containing payload.bin\n\
+             Direct .bin URLs are not supported"
+            ));
         }
-        let zip_payload = ZipPayloadFile::new(args.payload_path.clone()).await?;
-        parse_payload(zip_payload).await?
+
+        if !is_stdout {
+            println!("- Connecting to remote ZIP archive...");
+        }
+
+        let http_reader =
+            HttpReader::new(payload_path_str.clone(), args.user_agent.as_deref()).await?;
+        let entry = ZipParser::find_payload_entry(&http_reader).await?;
+        let payload_offset = ZipParser::get_data_offset(&http_reader, &entry).await?;
+        ZipParser::verify_payload_magic(&http_reader, payload_offset).await?;
+
+        if !is_stdout {
+            println!(
+                "- Found payload.bin at offset {} in remote ZIP",
+                payload_offset
+            );
+        }
+
+        // Parse using direct read_at instead of AsyncRead
+        parse_remote_payload(&http_reader, payload_offset).await?
+    } else if is_zip {
+        parse_local_zip_payload(args.payload_path.clone()).await?
     } else {
-        parse_payload_from_file(&args.payload_path).await?
+        // Local .bin file
+        parse_local_payload(&args.payload_path).await?
     };
 
     // Print security patch level
@@ -193,31 +166,31 @@ async fn main() -> Result<()> {
 
     // Handle metadata extraction
     #[cfg(feature = "metadata")]
-    if let Some(mode) = &args.metadata {
-        if !args.list {
-            main_pb.set_message("Extracting metadata...");
+    if let Some(mode) = &args.metadata
+        && !args.list
+    {
+        main_pb.set_message("Extracting metadata...");
 
-            let full_mode = mode == "full";
+        let full_mode = mode == "full";
 
-            match save_metadata(&manifest, &args.out, data_offset, full_mode).await {
-                Ok(json) => {
-                    if is_stdout {
-                        println!("{}", json);
-                    } else {
-                        let mode_str = if full_mode { " (full mode)" } else { "" };
-                        println!(
-                            "✓ Metadata{} saved to: {}/payload_metadata.json",
-                            mode_str,
-                            args.out.display()
-                        );
-                    }
-                    multi_progress.clear()?;
-                    return Ok(());
+        match save_metadata(&manifest, &args.out, data_offset, full_mode).await {
+            Ok(json) => {
+                if is_stdout {
+                    println!("{}", json);
+                } else {
+                    let mode_str = if full_mode { " (full mode)" } else { "" };
+                    println!(
+                        "✓ Metadata{} saved to: {}/payload_metadata.json",
+                        mode_str,
+                        args.out.display()
+                    );
                 }
-                Err(e) => {
-                    main_pb.finish_with_message("Failed to save metadata");
-                    return Err(e);
-                }
+                multi_progress.clear()?;
+                return Ok(());
+            }
+            Err(e) => {
+                main_pb.finish_with_message("Failed to save metadata");
+                return Err(e);
             }
         }
     }
@@ -290,10 +263,16 @@ async fn main() -> Result<()> {
         "Processing partitions..."
     });
 
-    let payload_reader: Arc<dyn AsyncPayloadRead> = if is_zip {
+    let payload_reader: Arc<dyn AsyncPayloadRead> = if is_url {
+        // Remote URL
         if !is_stdout {
-            println!("- Detected ZIP archive, extracting payload.bin metadata...");
+            println!("- Preparing remote extraction...");
         }
+        Arc::new(
+            RemoteAsyncZipPayloadReader::new(payload_path_str.clone(), args.user_agent.as_deref())
+                .await?,
+        )
+    } else if is_zip {
         Arc::new(LocalAsyncZipPayloadReader::new(args.payload_path.clone()).await?)
     } else {
         Arc::new(LocalAsyncPayloadReader::new(args.payload_path.clone()).await?)
