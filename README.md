@@ -8,12 +8,12 @@ Ever downloaded an Android OTA update or custom ROM and needed to extract the sy
 
 ## Why should you use this?
 
-- ** Fast**: Parallel extraction uses all your CPU cores
-- ** Memory efficient**: Streams data instead of loading everything into RAM
-- ** Network smart**: Extract directly from URLs without downloading the whole file
-- ** Flexible**: Works with payload.bin files, ROM ZIPs, or direct URLs
-- ** Reliable**: Verifies extracted partitions to catch corruption
-- ** Cross-platform**: Linux, Windows, macOS, even Android (Termux)
+- **Fast**: Parallel extraction uses all your CPU cores
+- **Memory efficient**: Streams data instead of loading everything into RAM
+- **Network smart**: Extract directly from URLs without downloading the whole file
+- **Flexible**: Works with payload.bin files, ROM ZIPs, or direct URLs
+- **Reliable**: Verifies extracted partitions to catch corruption
+- **Cross-platform**: Linux, Windows, macOS, even Android (Termux)
 
 ## Installation
 
