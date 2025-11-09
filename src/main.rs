@@ -7,6 +7,7 @@ use anyhow::{Result, anyhow};
 use clap::Parser;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use tokio::fs;
+use tokio::sync::Semaphore;
 
 mod args;
 #[cfg(feature = "remote_zip")]
@@ -269,10 +270,9 @@ async fn main() -> Result<()> {
     }
 
     main_pb.println(format!(
-    "- Found {} partitions to extract",
-    partitions_to_extract.len()
-));
-
+        "- Found {} partitions to extract",
+        partitions_to_extract.len()
+    ));
 
     let use_parallel = !args.no_parallel;
 
@@ -320,7 +320,8 @@ async fn main() -> Result<()> {
     let mut failed_partitions = Vec::new();
 
     if use_parallel {
-        // Parallel async extraction
+        // thread limiting
+        let semaphore = Arc::new(Semaphore::new(thread_count));
         let mut tasks = Vec::new();
 
         for partition in &partitions_to_extract {
@@ -328,8 +329,12 @@ async fn main() -> Result<()> {
             let payload_reader = Arc::clone(&payload_reader);
             let args = Arc::clone(&args);
             let multi_progress = Arc::clone(&multi_progress);
+            let semaphore = Arc::clone(&semaphore);
 
             let task = tokio::spawn(async move {
+                // acquire permit to limit concurrent tasks to thread_count
+                let _permit = semaphore.acquire().await.unwrap();
+                
                 let partition_name = partition.partition_name.clone();
 
                 match dump_partition(
@@ -345,6 +350,7 @@ async fn main() -> Result<()> {
                     Ok(()) => Ok(()),
                     Err(e) => Err((partition_name, e)),
                 }
+                // permit is automatically released when _permit is dropped
             });
 
             tasks.push(task);
