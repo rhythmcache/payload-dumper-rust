@@ -55,7 +55,7 @@ fn main() {
         features.push("metadata");
     }
     if env::var("CARGO_FEATURE_HICKORY_DNS").is_ok() {
-        features.push("hickory-dns");
+        features.push("hickory_dns");
     }
 
     let features_str = if features.is_empty() {
