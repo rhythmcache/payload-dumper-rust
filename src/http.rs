@@ -1,3 +1,4 @@
+#![allow(unused)]
 use anyhow::{Result, anyhow};
 use reqwest::{Client, header};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -34,7 +35,7 @@ fn create_http_client(user_agent: Option<&str>) -> Result<Client> {
         header::HeaderValue::from_static("no-transform"),
     );
 
-    Client::builder()
+    let mut client_builder = Client::builder()
         .timeout(Duration::from_secs(600))
         .connect_timeout(Duration::from_secs(30))
         .pool_max_idle_per_host(10)
@@ -43,10 +44,79 @@ fn create_http_client(user_agent: Option<&str>) -> Result<Client> {
         .http2_keep_alive_interval(Some(Duration::from_secs(30)))
         .http2_adaptive_window(true)
         .default_headers(headers)
-        .redirect(reqwest::redirect::Policy::limited(10))
+        .redirect(reqwest::redirect::Policy::limited(10));
+
+    // use custom DNS resolver when feature is enabled
+    #[cfg(feature = "hickory_dns")]
+    {
+        use hickory_resolver::config::*;
+        use hickory_resolver::TokioAsyncResolver;
+        use reqwest::dns::{Name, Resolve, Resolving};
+        use std::net::SocketAddr;
+        use std::sync::Arc;
+
+        struct CustomDnsResolver {
+            resolver: TokioAsyncResolver,
+        }
+
+        impl CustomDnsResolver {
+            fn new() -> Result<Self> {
+                // cloudflare DNS -> 1.1.1.1 and 1.0.0.1
+                let mut config = ResolverConfig::new();
+                config.add_name_server(NameServerConfig {
+                    socket_addr: SocketAddr::from(([1, 1, 1, 1], 53)),
+                    protocol: Protocol::Udp,
+                    tls_dns_name: None,
+                    trust_negative_responses: false,
+                    bind_addr: None,
+                });
+                config.add_name_server(NameServerConfig {
+                    socket_addr: SocketAddr::from(([1, 0, 0, 1], 53)),
+                    protocol: Protocol::Udp,
+                    tls_dns_name: None,
+                    trust_negative_responses: false,
+                    bind_addr: None,
+                });
+
+                let opts = ResolverOpts::default();
+                let resolver = TokioAsyncResolver::tokio(config, opts);
+
+                Ok(Self { resolver })
+            }
+        }
+
+        impl Resolve for CustomDnsResolver {
+            fn resolve(&self, name: Name) -> Resolving {
+                let resolver = self.resolver.clone();
+                Box::pin(async move {
+                    let name_str = name.as_str();
+                    let lookup = resolver
+                        .lookup_ip(name_str)
+                        .await
+                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+
+                    let addrs: Box<dyn Iterator<Item = SocketAddr> + Send> = Box::new(
+                        lookup
+                            .into_iter()
+                            .map(|ip| SocketAddr::new(ip, 0))
+                    );
+
+                    Ok(addrs)
+                })
+            }
+        }
+
+        let dns_resolver = CustomDnsResolver::new()
+            .map_err(|e| anyhow!("Failed to create DNS resolver: {}", e))?;
+
+        client_builder = client_builder.dns_resolver(Arc::new(dns_resolver));
+    }
+
+    client_builder
         .build()
         .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))
 }
+
 
 /// async HTTP reader with range request support
 pub struct HttpReader {
