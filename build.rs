@@ -45,8 +45,8 @@ fn main() {
 
     let mut features = Vec::new();
 
-    if env::var("CARGO_FEATURE_REMOTE_OTA").is_ok() {
-        features.push("remote_ota");
+    if env::var("CARGO_FEATURE_REMOTE_ZIP").is_ok() {
+        features.push("remote_zip");
     }
     if env::var("CARGO_FEATURE_LOCAL_ZIP").is_ok() {
         features.push("local_zip");
