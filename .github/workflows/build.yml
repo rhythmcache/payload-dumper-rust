@@ -25,7 +25,7 @@ jobs:
           targets: ${{ matrix.target }}
       
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }} --features differential_ota
+        run: cargo build --release --target ${{ matrix.target }}
         env:
           RUSTFLAGS: -C target-feature=+crt-static -C link-arg=/LTCG
       
@@ -61,7 +61,7 @@ jobs:
           targets: aarch64-pc-windows-msvc
       
       - name: Build
-        run: cargo build --release --target aarch64-pc-windows-msvc --features differential_ota
+        run: cargo build --release --target aarch64-pc-windows-msvc
         env:
           RUSTFLAGS: -C target-feature=+crt-static -C link-arg=/LTCG
       
@@ -104,7 +104,7 @@ jobs:
           targets: ${{ matrix.target }}
       
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }} --features differential_ota
+        run: cargo build --release --target ${{ matrix.target }}
       
       - name: Generate SHA256
         run: |
@@ -274,7 +274,7 @@ jobs:
           EOF
       
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }} --features differential_ota
+        run: cargo build --release --target ${{ matrix.target }}
         env:
          CC_aarch64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang
          CXX_aarch64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang++
@@ -325,6 +325,13 @@ jobs:
         run: |
           VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Read Changelog
+        id: changelog
+        run: |
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          cat changelog.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
       
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -338,11 +345,11 @@ jobs:
           name: "payload-dumper-rust v${{ steps.version.outputs.version }}"
           body: |
             # payload-dumper-rust v${{ steps.version.outputs.version }}
-            
+
             Automated build from workflow run #${{ github.run_number }}
-            
+
             ## Installation
-            
+
             If you're unsure which to download:
             - To install on `Linux` or `Termux`, Run
             ```bash
@@ -352,7 +359,9 @@ jobs:
             ```powershell
             powershell -NoExit -ExecutionPolicy Bypass -Command "Invoke-RestMethod -Uri 'https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/install.ps1' | Invoke-Expression"
             ```
-            
+
+            ## Changelog
+            ${{ steps.changelog.outputs.body }}
           files: |
             artifacts/**/*.zip
         env:
