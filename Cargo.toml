@@ -43,8 +43,7 @@ url = "2.5.7"
 lazy_static = "1.5.0"
 
 reqwest = { version = "0.12.24", features = ["rustls-tls-webpki-roots", "stream", "gzip", "http2"], default-features = false, optional = true }
-
-hickory-resolver = { version = "0.24.4", optional = true }
+hickory-resolver = { version = "0.25.2", optional = true }
 
 [build-dependencies]
 chrono = "0.4.42"
