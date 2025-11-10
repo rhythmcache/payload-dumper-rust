@@ -11,7 +11,7 @@ lazy_static::lazy_static! {
 }
 
 /// HTTP client
-fn create_http_client(user_agent: Option<&str>) -> Result<Client> {
+async fn create_http_client(user_agent: Option<&str>) -> Result<Client> {
     let mut headers = header::HeaderMap::new();
 
     let ua = user_agent.unwrap_or(DEFAULT_USER_AGENT);
@@ -49,39 +49,36 @@ fn create_http_client(user_agent: Option<&str>) -> Result<Client> {
     // use custom DNS resolver when feature is enabled
     #[cfg(feature = "hickory_dns")]
     {
+        use hickory_resolver::Resolver;
+        use hickory_resolver::name_server::TokioConnectionProvider;
         use hickory_resolver::config::*;
-        use hickory_resolver::TokioAsyncResolver;
         use reqwest::dns::{Name, Resolve, Resolving};
         use std::net::SocketAddr;
         use std::sync::Arc;
 
         struct CustomDnsResolver {
-            resolver: TokioAsyncResolver,
+            resolver: Arc<Resolver<TokioConnectionProvider>>,
         }
 
         impl CustomDnsResolver {
-            fn new() -> Result<Self> {
-                // cloudflare DNS -> 1.1.1.1 and 1.0.0.1
-                let mut config = ResolverConfig::new();
-                config.add_name_server(NameServerConfig {
-                    socket_addr: SocketAddr::from(([1, 1, 1, 1], 53)),
-                    protocol: Protocol::Udp,
-                    tls_dns_name: None,
-                    trust_negative_responses: false,
-                    bind_addr: None,
-                });
-                config.add_name_server(NameServerConfig {
-                    socket_addr: SocketAddr::from(([1, 0, 0, 1], 53)),
-                    protocol: Protocol::Udp,
-                    tls_dns_name: None,
-                    trust_negative_responses: false,
-                    bind_addr: None,
-                });
+            async fn new() -> Result<Self> {
+                // Use Cloudflare's DNS (1.1.1.1 and 1.0.0.1)
+                let config = ResolverConfig::cloudflare();
+                
+                // Build resolver in a spawn_blocking to avoid blocking async runtime
+                let resolver = tokio::task::spawn_blocking(move || {
+                    Resolver::builder_with_config(
+                        config,
+                        TokioConnectionProvider::default(),
+                    )
+                    .build()
+                })
+                .await
+                .map_err(|e| anyhow!("Failed to spawn resolver task: {}", e))?;
 
-                let opts = ResolverOpts::default();
-                let resolver = TokioAsyncResolver::tokio(config, opts);
-
-                Ok(Self { resolver })
+                Ok(Self {
+                    resolver: Arc::new(resolver),
+                })
             }
         }
 
@@ -107,6 +104,7 @@ fn create_http_client(user_agent: Option<&str>) -> Result<Client> {
         }
 
         let dns_resolver = CustomDnsResolver::new()
+            .await
             .map_err(|e| anyhow!("Failed to create DNS resolver: {}", e))?;
 
         client_builder = client_builder.dns_resolver(Arc::new(dns_resolver));
@@ -127,7 +125,7 @@ pub struct HttpReader {
 
 impl HttpReader {
     pub async fn new(url: String, user_agent: Option<&str>) -> Result<Self> {
-        let client = create_http_client(user_agent)?;
+        let client = create_http_client(user_agent).await?;
 
         // validate URL
         url::Url::parse(&url).map_err(|e| anyhow!("Invalid URL: {}", e))?;
