@@ -12,21 +12,27 @@ pub struct RemoteAsyncZipPayloadReader {
     http_reader: HttpReader,
     payload_offset: u64,
     payload_size: u64,
+    streaming_client: reqwest::Client,
 }
 
 impl RemoteAsyncZipPayloadReader {
     pub async fn new(url: String, user_agent: Option<&str>) -> Result<Self> {
         let http_reader = HttpReader::new(url, user_agent).await?;
 
-        // find payload.bin in ZIP
         let entry = ZipParser::find_payload_entry(&http_reader).await?;
         let payload_offset = ZipParser::get_data_offset(&http_reader, &entry).await?;
         ZipParser::verify_payload_magic(&http_reader, payload_offset).await?;
+
+        let streaming_client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(600))
+            .pool_max_idle_per_host(10)
+            .build()?;
 
         Ok(Self {
             http_reader,
             payload_offset,
             payload_size: entry.uncompressed_size,
+            streaming_client,
         })
     }
 }
@@ -49,16 +55,11 @@ impl AsyncPayloadRead for RemoteAsyncZipPayloadReader {
             ));
         }
 
-        // create a new HTTP client for streaming
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(600))
-            .pool_max_idle_per_host(10)
-            .build()?;
-
         let end = absolute_offset + length - 1;
         let range = format!("bytes={}-{}", absolute_offset, end);
 
-        let response = client
+        let response = self
+            .streaming_client
             .get(&self.http_reader.url)
             .header(reqwest::header::RANGE, range)
             .send()
