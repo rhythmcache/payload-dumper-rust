@@ -27,7 +27,7 @@ mod zip;
 
 use crate::args::Args;
 #[cfg(feature = "metadata")]
-use crate::metadata::save_metadata;
+use crate::metadata::handle_metadata_extraction;
 use crate::payload::payload_dumper::{AsyncPayloadRead, dump_partition};
 use crate::payload::payload_parser::parse_local_payload;
 #[cfg(feature = "local_zip")]
@@ -185,27 +185,23 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Handle metadata extraction
     #[cfg(feature = "metadata")]
     if let Some(mode) = &args.metadata
         && !args.list
     {
         main_pb.println("- Extracting metadata...");
 
-        let full_mode = mode == "full";
-
-        match save_metadata(&manifest, &args.out, data_offset, full_mode).await {
-            Ok(json) => {
-                if is_stdout {
-                    println!("{}", json);
-                } else {
-                    let mode_str = if full_mode { " (full mode)" } else { "" };
-                    println!(
-                        "✓ Metadata{} saved to: {}/payload_metadata.json",
-                        mode_str,
-                        args.out.display()
-                    );
-                }
+        match handle_metadata_extraction(
+            &manifest,
+            &args.out,
+            data_offset,
+            mode,
+            &args.images,
+            is_stdout,
+        )
+        .await
+        {
+            Ok(()) => {
                 multi_progress.clear()?;
                 return Ok(());
             }
@@ -216,27 +212,27 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Handle list command
+    // handle list command
     if args.list {
         main_pb.finish_and_clear();
         multi_progress.clear()?;
 
+        // if metadata was requested in list mode, save it
         #[cfg(feature = "metadata")]
         if let Some(mode) = &args.metadata {
-            let full_mode = mode == "full";
-
-            match save_metadata(&manifest, &args.out, data_offset, full_mode).await {
-                Ok(json) => {
+            match handle_metadata_extraction(
+                &manifest,
+                &args.out,
+                data_offset,
+                mode,
+                &args.images,
+                is_stdout,
+            )
+            .await
+            {
+                Ok(()) => {
                     if is_stdout {
-                        println!("{}", json);
                         return Ok(());
-                    } else {
-                        let mode_str = if full_mode { " (full mode)" } else { "" };
-                        println!(
-                            "✓ Metadata{} saved to: {}/payload_metadata.json",
-                            mode_str,
-                            args.out.display()
-                        );
                     }
                 }
                 Err(e) => {

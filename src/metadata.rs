@@ -4,15 +4,64 @@ use crate::install_operation;
 use crate::structs::*;
 use crate::utils::format_size;
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use tokio::fs;
 
-pub async fn save_metadata(
+pub async fn handle_metadata_extraction(
+    manifest: &DeltaArchiveManifest,
+    out_dir: &std::path::Path,
+    data_offset: u64,
+    mode: &str,
+    images_filter: &str,
+    is_stdout: bool,
+) -> Result<()> {
+    let full_mode = mode == "full";
+    let filter_partitions = if !images_filter.is_empty() {
+        let images: HashSet<&str> = images_filter.split(',').collect();
+        Some(images)
+    } else {
+        None
+    };
+
+    match save_metadata(
+        manifest,
+        out_dir,
+        data_offset,
+        full_mode,
+        filter_partitions.as_ref(),
+    )
+    .await
+    {
+        Ok(json) => {
+            if is_stdout {
+                println!("{}", json);
+            } else {
+                let mode_str = if full_mode { " (full mode)" } else { "" };
+                let filter_str = if filter_partitions.is_some() {
+                    format!(" for {} partition(s)", images_filter.split(',').count())
+                } else {
+                    String::new()
+                };
+                println!(
+                    "✓ Metadata{}{} saved to: {}/payload_metadata.json",
+                    mode_str,
+                    filter_str,
+                    out_dir.display()
+                );
+            }
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+async fn save_metadata(
     manifest: &DeltaArchiveManifest,
     output_dir: &Path,
     data_offset: u64,
     full_mode: bool,
+    filter_partitions: Option<&HashSet<&str>>,
 ) -> Result<String> {
     let mut partitions = Vec::new();
     let mut total_payload_size = 0u64;
@@ -20,6 +69,13 @@ pub async fn save_metadata(
     let mut global_op_stats: HashMap<String, (usize, u64)> = HashMap::new();
 
     for partition in &manifest.partitions {
+        // Skip partition if filter is provided and partition is not in filter
+        if let Some(filter) = filter_partitions {
+            if !filter.contains(partition.partition_name.as_str()) {
+                continue;
+            }
+        }
+
         if let Some(info) = &partition.new_partition_info {
             let size_in_bytes = info.size.unwrap_or(0);
             let block_size = manifest.block_size.unwrap_or(4096) as u64;

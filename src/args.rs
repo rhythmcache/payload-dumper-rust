@@ -120,8 +120,8 @@ pub struct Args {
         help = "Save metadata as JSON. Use '--metadata=full' for detailed info including all operations",
         long_help = "Save metadata as JSON:\n  \
                      --metadata        Compact mode (default, ~100KB)\n  \
-                     --metadata=full   Full mode with all operation details (may be large)",
-        conflicts_with_all = &["images"],
+                     --metadata=full   Full mode with all operation details (may be large)\n  \
+                     Can be combined with --images to export metadata for specific partitions only",
         hide = cfg!(not(feature = "metadata"))
     )]
     pub metadata: Option<String>,
