@@ -15,6 +15,8 @@ mod http;
 #[cfg(feature = "metadata")]
 mod metadata;
 mod payload;
+#[cfg(feature = "prefetch")]
+mod prefetch;
 mod readers;
 #[cfg(feature = "metadata")]
 mod structs;
@@ -130,8 +132,8 @@ async fn main() -> Result<()> {
             main_pb.println(format!(
                 "- Processing file: {}, size: {}",
                 payload_path_str,
-                format_size(metadata.len()))
-            );
+                format_size(metadata.len())
+            ));
         }
     }
 
@@ -158,7 +160,7 @@ async fn main() -> Result<()> {
         }
         #[cfg(not(feature = "remote_zip"))]
         {
-            unreachable!(); 
+            unreachable!();
         }
     } else if is_zip {
         #[cfg(feature = "local_zip")]
@@ -167,7 +169,7 @@ async fn main() -> Result<()> {
         }
         #[cfg(not(feature = "local_zip"))]
         {
-            unreachable!(); 
+            unreachable!();
         }
     } else {
         // Local .bin file
@@ -274,6 +276,36 @@ async fn main() -> Result<()> {
         partitions_to_extract.len()
     ));
 
+    // Check if prefetch mode is enabled for remote URLs
+    if args.prefetch && is_url {
+        #[cfg(feature = "prefetch")]
+        {
+            if !is_stdout {
+                main_pb.println("- Using prefetch mode for remote extraction");
+            }
+
+            let multi_progress = Arc::new(multi_progress);
+            let args = Arc::new(args);
+
+            return crate::prefetch::prefetch_and_extract(
+                payload_path_str.clone(),
+                manifest,
+                data_offset,
+                Arc::clone(&args),
+                partitions_to_extract,
+                Arc::clone(&multi_progress),
+            )
+            .await;
+        }
+        #[cfg(not(feature = "prefetch"))]
+        {
+            return Err(anyhow!(
+                "Prefetch mode requires the 'prefetch' feature to be enabled"
+            ));
+        }
+    }
+
+    // Prefetch not enabled - continue with normal extraction
     let use_parallel = !args.no_parallel;
 
     main_pb.set_message(if use_parallel {
@@ -334,7 +366,7 @@ async fn main() -> Result<()> {
             let task = tokio::spawn(async move {
                 // acquire permit to limit concurrent tasks to thread_count
                 let _permit = semaphore.acquire().await.unwrap();
-                
+
                 let partition_name = partition.partition_name.clone();
 
                 match dump_partition(

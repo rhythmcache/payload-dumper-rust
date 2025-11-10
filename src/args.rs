@@ -131,4 +131,14 @@ pub struct Args {
 
     #[arg(short = 'n', long, help = "Skip hash verification")]
     pub no_verify: bool,
+
+    #[arg(
+        long,
+        help = "Pre-download all partition data before extraction (only for remote URLs)",
+        long_help = "For remote URLs, download all required partition data to a temporary directory \
+                     before extraction. This eliminates per-operation network latency at the cost of \
+                     upfront download time. Most effective for slow/high-latency connections.",
+        hide = cfg!(not(feature = "prefetch"))
+    )]
+    pub prefetch: bool,
 }

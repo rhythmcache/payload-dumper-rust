@@ -44,16 +44,18 @@ lazy_static = "1.5.0"
 
 reqwest = { version = "0.12.24", features = ["rustls-tls-webpki-roots", "stream", "gzip", "http2"], default-features = false, optional = true }
 hickory-resolver = { version = "0.25.2", optional = true }
+tempfile = { version = "3.23.0", optional = true }
 
 [build-dependencies]
 chrono = "0.4.42"
 
 [features]
-default = ["local_zip", "metadata", "remote_zip"]
+default = ["local_zip", "metadata", "remote_zip", "prefetch"]
 metadata = ["dep:serde", "dep:serde_json"]
 local_zip = []
 remote_zip = ["local_zip", "dep:reqwest", "dep:tokio-util"]
 hickory_dns = ["remote_zip", "dep:hickory-resolver", "reqwest?/hickory-dns"]
+prefetch = ["remote_zip", "dep:tempfile"]
 
 [profile.release]
 strip = true
