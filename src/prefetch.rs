@@ -10,7 +10,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Semaphore;
 
 use crate::args::Args;
-use crate::payload::payload_dumper::{AsyncPayloadRead, dump_partition};
+use crate::payload::payload_dumper::{AsyncPayloadRead, PayloadReader, dump_partition};
 use crate::readers::local_reader::LocalAsyncPayloadReader;
 use crate::readers::remote_zip_reader::RemoteAsyncZipPayloadReader;
 use crate::utils::format_elapsed_time;
@@ -77,8 +77,10 @@ async fn download_partition_data_to_path(
     let temp_path = temp_dir_path.join(format!("{}.prefetch", partition_name));
     let mut file = File::create(&temp_path).await?;
 
-    let mut stream = zip_reader
-        .stream_from(range.min_offset, range.total_bytes)
+    // open a reader for downloading
+    let mut reader = zip_reader.open_reader().await?;
+    let mut stream = reader
+        .read_range(range.min_offset, range.total_bytes)
         .await?;
 
     const BUFFER_SIZE: usize = 256 * 1024; // 256 KB buffer for reading
@@ -123,11 +125,30 @@ impl OffsetTranslatingReader {
 
 #[async_trait::async_trait]
 impl AsyncPayloadRead for OffsetTranslatingReader {
-    async fn stream_from(
-        &self,
+    async fn open_reader(&self) -> Result<Box<dyn PayloadReader>> {
+        // open the inner reader
+        let inner_reader = self.inner.open_reader().await?;
+
+        // wrap it with offset translation
+        Ok(Box::new(OffsetTranslatingPayloadReader {
+            inner: inner_reader,
+            base_offset: self.base_offset,
+        }))
+    }
+}
+
+struct OffsetTranslatingPayloadReader {
+    inner: Box<dyn PayloadReader>,
+    base_offset: u64,
+}
+
+#[async_trait::async_trait]
+impl PayloadReader for OffsetTranslatingPayloadReader {
+    async fn read_range(
+        &mut self,
         offset: u64,
         length: u64,
-    ) -> Result<std::pin::Pin<Box<dyn tokio::io::AsyncRead + Send>>> {
+    ) -> Result<std::pin::Pin<Box<dyn tokio::io::AsyncRead + Send + '_>>> {
         // translate absolute offset to relative offset in temp file
         if offset < self.base_offset {
             return Err(anyhow!(
@@ -138,7 +159,7 @@ impl AsyncPayloadRead for OffsetTranslatingReader {
         }
 
         let relative_offset = offset - self.base_offset;
-        self.inner.stream_from(relative_offset, length).await
+        self.inner.read_range(relative_offset, length).await
     }
 }
 
@@ -186,7 +207,6 @@ pub async fn prefetch_and_extract(
         partition_info.len()
     ));
 
-    // calculate thread count (same logic as main.rs)
     let thread_count = if args.no_parallel {
         1
     } else if let Some(threads) = args.threads {

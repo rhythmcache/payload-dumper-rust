@@ -1,5 +1,69 @@
 use crate::DeltaArchiveManifest;
+use anyhow::{Result, anyhow};
+use std::path::Path;
 use std::time::Duration;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
+
+#[derive(Debug, PartialEq)]
+pub enum FileType {
+    Zip,
+    Bin,
+}
+
+pub const ZIP_MAGIC: [u8; 2] = [0x50, 0x4B];
+pub const PAYLOAD_MAGIC: &[u8; 4] = b"CrAU";
+pub const SUPPORTED_PAYLOAD_VERSION: u64 = 2;
+
+pub async fn detect_file_type(path: &Path) -> Result<FileType> {
+    let mut file = File::open(path).await?;
+    let mut magic = [0u8; 4];
+    file.read_exact(&mut magic).await?;
+
+    if magic.starts_with(&ZIP_MAGIC) {
+        return Ok(FileType::Zip);
+    }
+
+    if &magic == PAYLOAD_MAGIC {
+        return Ok(FileType::Bin);
+    }
+
+    Err(anyhow!(
+        "Magic mismatch in file {:?}: got {:02X?}, expected 'PK' or 'CrAU'",
+        path.file_name().unwrap_or_default(),
+        magic
+    ))
+}
+
+#[cfg(feature = "remote_zip")]
+pub async fn detect_remote_file_type(url: &str, user_agent: Option<&str>) -> Result<FileType> {
+    use crate::http::HttpReader;
+    use anyhow::Context;
+
+    let http_reader = HttpReader::new(url.to_string(), user_agent)
+        .await
+        .context("Failed to initialize HTTP reader")?;
+
+    let mut magic = [0u8; 4];
+    http_reader
+        .read_at(0, &mut magic)
+        .await
+        .context("Failed to read magic bytes from remote file")?;
+
+    if magic.starts_with(&ZIP_MAGIC) {
+        return Ok(FileType::Zip);
+    }
+
+    if &magic == PAYLOAD_MAGIC {
+        return Ok(FileType::Bin);
+    }
+
+    Err(anyhow!(
+        "Magic mismatch in remote file {}: got {:02X?}, expected 'PK' or 'CrAU'",
+        url,
+        magic
+    ))
+}
 
 pub fn format_elapsed_time(duration: Duration) -> String {
     let total_secs = duration.as_secs();

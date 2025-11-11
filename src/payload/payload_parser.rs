@@ -1,6 +1,7 @@
 use crate::DeltaArchiveManifest;
 #[cfg(feature = "remote_zip")]
 use crate::http::HttpReader;
+use crate::utils::{PAYLOAD_MAGIC, SUPPORTED_PAYLOAD_VERSION};
 #[cfg(feature = "local_zip")]
 use crate::zip::local_zip_io::LocalZipIO;
 #[cfg(feature = "local_zip")]
@@ -15,9 +16,6 @@ use std::pin::Pin;
 use tokio::fs::File;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt};
 
-const MAGIC: &[u8; 4] = b"CrAU";
-const SUPPORTED_VERSION: u64 = 2;
-
 /// parse payload from any async reader that supports seeking
 /// returns (manifest, data_offset)
 pub async fn parse_payload<R>(mut reader: R) -> Result<(DeltaArchiveManifest, u64)>
@@ -29,13 +27,13 @@ where
     // read and validate magic
     let mut magic = [0u8; 4];
     reader.read_exact(&mut magic).await?;
-    if &magic != MAGIC {
+    if &magic != PAYLOAD_MAGIC {
         return Err(anyhow!("Invalid payload file: magic 'CrAU' not found"));
     }
 
     // read and validate version
     let version = reader.read_u64().await?;
-    if version != SUPPORTED_VERSION {
+    if version != SUPPORTED_PAYLOAD_VERSION {
         return Err(anyhow!("Unsupported payload version: {}", version));
     }
 
@@ -66,8 +64,13 @@ where
 pub async fn parse_remote_payload(
     url: String,
     user_agent: Option<&str>,
-) -> Result<(DeltaArchiveManifest, u64)> {
+) -> Result<(DeltaArchiveManifest, u64, u64)> {
+    // Added u64 for content_length
     let http_reader = HttpReader::new(url, user_agent).await?;
+
+    // Get the content length to return
+    let content_length = http_reader.content_length;
+
     let entry = ZipParser::find_payload_entry(&http_reader).await?;
     let payload_offset = ZipParser::get_data_offset(&http_reader, &entry).await?;
     ZipParser::verify_payload_magic(&http_reader, payload_offset).await?;
@@ -85,7 +88,7 @@ pub async fn parse_remote_payload(
     // read and validate magic
     let mut magic = [0u8; 4];
     read_at(&http_reader, &mut pos, &mut magic).await?;
-    if &magic != MAGIC {
+    if &magic != PAYLOAD_MAGIC {
         return Err(anyhow!("Invalid payload file: magic 'CrAU' not found"));
     }
 
@@ -93,7 +96,7 @@ pub async fn parse_remote_payload(
     let mut buf = [0u8; 8];
     read_at(&http_reader, &mut pos, &mut buf).await?;
     let version = u64::from_be_bytes(buf);
-    if version != SUPPORTED_VERSION {
+    if version != SUPPORTED_PAYLOAD_VERSION {
         return Err(anyhow!("Unsupported payload version: {}", version));
     }
 
@@ -119,7 +122,7 @@ pub async fn parse_remote_payload(
     // decode manifest
     let manifest = DeltaArchiveManifest::decode(&manifest_bytes[..])?;
 
-    Ok((manifest, data_offset))
+    Ok((manifest, data_offset, content_length)) // Return content_length too
 }
 
 /// parse payload from local file

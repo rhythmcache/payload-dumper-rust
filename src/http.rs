@@ -50,8 +50,8 @@ async fn create_http_client(user_agent: Option<&str>) -> Result<Client> {
     #[cfg(feature = "hickory_dns")]
     {
         use hickory_resolver::Resolver;
-        use hickory_resolver::name_server::TokioConnectionProvider;
         use hickory_resolver::config::*;
+        use hickory_resolver::name_server::TokioConnectionProvider;
         use reqwest::dns::{Name, Resolve, Resolving};
         use std::net::SocketAddr;
         use std::sync::Arc;
@@ -64,14 +64,11 @@ async fn create_http_client(user_agent: Option<&str>) -> Result<Client> {
             async fn new() -> Result<Self> {
                 // Use Cloudflare's DNS (1.1.1.1 and 1.0.0.1)
                 let config = ResolverConfig::cloudflare();
-                
+
                 // Build resolver in a spawn_blocking to avoid blocking async runtime
                 let resolver = tokio::task::spawn_blocking(move || {
-                    Resolver::builder_with_config(
-                        config,
-                        TokioConnectionProvider::default(),
-                    )
-                    .build()
+                    Resolver::builder_with_config(config, TokioConnectionProvider::default())
+                        .build()
                 })
                 .await
                 .map_err(|e| anyhow!("Failed to spawn resolver task: {}", e))?;
@@ -92,11 +89,8 @@ async fn create_http_client(user_agent: Option<&str>) -> Result<Client> {
                         .await
                         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
 
-                    let addrs: Box<dyn Iterator<Item = SocketAddr> + Send> = Box::new(
-                        lookup
-                            .into_iter()
-                            .map(|ip| SocketAddr::new(ip, 0))
-                    );
+                    let addrs: Box<dyn Iterator<Item = SocketAddr> + Send> =
+                        Box::new(lookup.into_iter().map(|ip| SocketAddr::new(ip, 0)));
 
                     Ok(addrs)
                 })
@@ -115,12 +109,11 @@ async fn create_http_client(user_agent: Option<&str>) -> Result<Client> {
         .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))
 }
 
-
 /// async HTTP reader with range request support
 pub struct HttpReader {
-    client: Client,
+    pub client: Client,
     pub url: String,
-    content_length: u64,
+    pub content_length: u64,
 }
 
 impl HttpReader {

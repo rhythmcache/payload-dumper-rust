@@ -11,35 +11,34 @@ pub use crate::PartitionUpdate;
 use crate::args::Args;
 use crate::{InstallOperation, install_operation};
 
-
-const BUFREADER_SIZE: usize = 64 * 1024;    // 64 KB for BufReader (decompression streams)
+const BUFREADER_SIZE: usize = 64 * 1024; // 64 KB for BufReader (decompression streams)
 const COPY_BUFFER_SIZE: usize = 128 * 1024; // 128 KB for direct copy operations
 
 #[async_trait]
 pub trait AsyncPayloadRead: Send + Sync {
-    async fn stream_from(&self, offset: u64, length: u64)
-    -> Result<Pin<Box<dyn AsyncRead + Send>>>;
+    async fn open_reader(&self) -> Result<Box<dyn PayloadReader>>;
+}
+
+#[async_trait]
+pub trait PayloadReader: Send {
+    async fn read_range(
+        &mut self,
+        offset: u64,
+        length: u64,
+    ) -> Result<Pin<Box<dyn AsyncRead + Send + '_>>>;
 }
 
 #[async_trait]
 impl<T: AsyncPayloadRead> AsyncPayloadRead for Arc<T> {
-    async fn stream_from(
-        &self,
-        offset: u64,
-        length: u64,
-    ) -> Result<Pin<Box<dyn AsyncRead + Send>>> {
-        (**self).stream_from(offset, length).await
+    async fn open_reader(&self) -> Result<Box<dyn PayloadReader>> {
+        (**self).open_reader().await
     }
 }
 
 #[async_trait]
 impl AsyncPayloadRead for Arc<dyn AsyncPayloadRead> {
-    async fn stream_from(
-        &self,
-        offset: u64,
-        length: u64,
-    ) -> Result<Pin<Box<dyn AsyncRead + Send>>> {
-        (**self).stream_from(offset, length).await
+    async fn open_reader(&self) -> Result<Box<dyn PayloadReader>> {
+        (**self).open_reader().await
     }
 }
 
@@ -51,7 +50,7 @@ where
 {
     let mut buf = vec![0u8; COPY_BUFFER_SIZE];
     let mut total = 0u64;
-    
+
     loop {
         let n = reader.read(&mut buf).await?;
         if n == 0 {
@@ -60,16 +59,16 @@ where
         writer.write_all(&buf[..n]).await?;
         total += n as u64;
     }
-    
+
     Ok(total)
 }
 
-async fn process_operation_streaming<P: AsyncPayloadRead>(
+async fn process_operation_streaming(
     operation_index: usize,
     op: &InstallOperation,
     data_offset: u64,
     block_size: u64,
-    payload_reader: &P,
+    payload_reader: &mut dyn PayloadReader,
     out_file: &mut File,
 ) -> Result<()> {
     let offset = data_offset + op.data_offset.unwrap_or(0);
@@ -77,7 +76,7 @@ async fn process_operation_streaming<P: AsyncPayloadRead>(
 
     match op.r#type() {
         install_operation::Type::Replace => {
-            let mut stream = payload_reader.stream_from(offset, length).await?;
+            let mut stream = payload_reader.read_range(offset, length).await?;
             out_file
                 .seek(std::io::SeekFrom::Start(
                     op.dst_extents[0].start_block.unwrap_or(0) * block_size,
@@ -86,7 +85,7 @@ async fn process_operation_streaming<P: AsyncPayloadRead>(
             copy_with_buffer(&mut stream, out_file).await?;
         }
         install_operation::Type::ReplaceXz => {
-            let stream = payload_reader.stream_from(offset, length).await?;
+            let stream = payload_reader.read_range(offset, length).await?;
             let mut decoder = XzDecoder::new(BufReader::with_capacity(BUFREADER_SIZE, stream));
             out_file
                 .seek(std::io::SeekFrom::Start(
@@ -105,7 +104,7 @@ async fn process_operation_streaming<P: AsyncPayloadRead>(
             }
         }
         install_operation::Type::ReplaceBz => {
-            let stream = payload_reader.stream_from(offset, length).await?;
+            let stream = payload_reader.read_range(offset, length).await?;
             let mut decoder = BzDecoder::new(BufReader::with_capacity(BUFREADER_SIZE, stream));
             out_file
                 .seek(std::io::SeekFrom::Start(
@@ -124,7 +123,7 @@ async fn process_operation_streaming<P: AsyncPayloadRead>(
             }
         }
         install_operation::Type::Zstd => {
-            let stream = payload_reader.stream_from(offset, length).await?;
+            let stream = payload_reader.read_range(offset, length).await?;
             let mut decoder = ZstdDecoder::new(BufReader::with_capacity(BUFREADER_SIZE, stream));
 
             if op.dst_extents.len() == 1 {
@@ -253,16 +252,11 @@ pub async fn dump_partition<P: AsyncPayloadRead>(
         }
     }
 
+    let mut reader = payload_reader.open_reader().await?;
+
     for (i, op) in partition.operations.iter().enumerate() {
-        process_operation_streaming(
-            i,
-            op,
-            data_offset,
-            block_size,
-            payload_reader,
-            &mut out_file,
-        )
-        .await?;
+        process_operation_streaming(i, op, data_offset, block_size, &mut *reader, &mut out_file)
+            .await?;
 
         if let Some(pb) = &progress_bar {
             let percentage = ((i + 1) as f64 / total_ops as f64 * 100.0) as u64;

@@ -1,18 +1,18 @@
 use crate::http::HttpReader;
-use crate::payload::payload_dumper::AsyncPayloadRead;
+use crate::payload::payload_dumper::{AsyncPayloadRead, PayloadReader};
 use crate::zip::zip::ZipParser;
 use anyhow::Result;
 use async_trait::async_trait;
 use futures::StreamExt;
 use std::pin::Pin;
+use std::sync::Arc;
 use tokio::io::AsyncRead;
 
 /// async payload reader for remote ZIP files
 pub struct RemoteAsyncZipPayloadReader {
-    http_reader: HttpReader,
+    pub http_reader: Arc<HttpReader>,
     payload_offset: u64,
     payload_size: u64,
-    streaming_client: reqwest::Client,
 }
 
 impl RemoteAsyncZipPayloadReader {
@@ -23,27 +23,38 @@ impl RemoteAsyncZipPayloadReader {
         let payload_offset = ZipParser::get_data_offset(&http_reader, &entry).await?;
         ZipParser::verify_payload_magic(&http_reader, payload_offset).await?;
 
-        let streaming_client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(600))
-            .pool_max_idle_per_host(10)
-            .build()?;
-
         Ok(Self {
-            http_reader,
+            http_reader: Arc::new(http_reader),
             payload_offset,
             payload_size: entry.uncompressed_size,
-            streaming_client,
         })
     }
 }
 
 #[async_trait]
 impl AsyncPayloadRead for RemoteAsyncZipPayloadReader {
-    async fn stream_from(
-        &self,
+    async fn open_reader(&self) -> Result<Box<dyn PayloadReader>> {
+        Ok(Box::new(RemotePayloadReader {
+            http_reader: Arc::clone(&self.http_reader),
+            payload_offset: self.payload_offset,
+            payload_size: self.payload_size,
+        }))
+    }
+}
+
+struct RemotePayloadReader {
+    http_reader: Arc<HttpReader>,
+    payload_offset: u64,
+    payload_size: u64,
+}
+
+#[async_trait]
+impl PayloadReader for RemotePayloadReader {
+    async fn read_range(
+        &mut self,
         offset: u64,
         length: u64,
-    ) -> Result<Pin<Box<dyn AsyncRead + Send>>> {
+    ) -> Result<Pin<Box<dyn AsyncRead + Send + '_>>> {
         let absolute_offset = self.payload_offset + offset;
 
         if absolute_offset + length > self.payload_offset + self.payload_size {
@@ -59,7 +70,8 @@ impl AsyncPayloadRead for RemoteAsyncZipPayloadReader {
         let range = format!("bytes={}-{}", absolute_offset, end);
 
         let response = self
-            .streaming_client
+            .http_reader
+            .client
             .get(&self.http_reader.url)
             .header(reqwest::header::RANGE, range)
             .send()

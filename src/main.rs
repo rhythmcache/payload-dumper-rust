@@ -39,7 +39,10 @@ use crate::readers::local_reader::LocalAsyncPayloadReader;
 use crate::readers::local_zip_reader::LocalAsyncZipPayloadReader;
 #[cfg(feature = "remote_zip")]
 use crate::readers::remote_zip_reader::RemoteAsyncZipPayloadReader;
-use crate::utils::{format_elapsed_time, format_size, list_partitions};
+use crate::utils::FileType;
+#[cfg(feature = "remote_zip")]
+use crate::utils::detect_remote_file_type;
+use crate::utils::{detect_file_type, format_elapsed_time, format_size, list_partitions};
 use crate::verify::verify_partitions_hash;
 
 include!("proto/update_metadata.rs");
@@ -92,8 +95,55 @@ async fn main() -> Result<()> {
         .and_then(|e| e.to_str())
         .unwrap_or("");
 
-    let is_zip = extension == "zip";
-    let is_bin = extension == "bin" || extension.is_empty();
+    let mut is_zip = extension == "zip";
+    let mut is_bin = extension == "bin" || extension.is_empty();
+
+    // if extension detection is inconclusive, check magic bytes
+    if !is_url && (!is_zip && !is_bin || extension.is_empty()) {
+        match detect_file_type(&args.payload_path).await {
+            Ok(FileType::Zip) => {
+                is_zip = true;
+                is_bin = false;
+            }
+            Ok(FileType::Bin) => {
+                is_bin = true;
+                is_zip = false;
+            }
+            Err(e) => {
+                return Err(anyhow!(
+                    "Unable to detect file type. Extension: '{}', Error: {}",
+                    extension,
+                    e
+                ));
+            }
+        }
+    }
+
+    // if URL has no clear extension, check magic bytes remotely
+    if is_url && extension.is_empty() {
+        #[cfg(feature = "remote_zip")]
+        {
+            if !is_stdout {
+                main_pb.set_message("Detecting remote file type...");
+            }
+
+            match detect_remote_file_type(&payload_path_str, args.user_agent.as_deref()).await {
+                Ok(FileType::Zip) => {
+                    is_zip = true;
+                    is_bin = false;
+                }
+
+                Ok(FileType::Bin) => {
+                    return Err(anyhow!(
+                        "Direct .bin URLs are not supported. Only ZIP files containing payload.bin are supported for remote URLs."
+                    ));
+                }
+                Err(e) => {
+                    return Err(anyhow!("Unable to detect remote file type: {}", e));
+                }
+            }
+        }
+    }
 
     if !is_zip && !is_bin {
         return Err(anyhow!(
@@ -156,7 +206,20 @@ async fn main() -> Result<()> {
             if !is_stdout {
                 main_pb.println("- Connecting to remote ZIP archive...");
             }
-            parse_remote_payload(payload_path_str.clone(), args.user_agent.as_deref()).await?
+            let (manifest, data_offset, content_length) =
+                parse_remote_payload(payload_path_str.clone(), args.user_agent.as_deref()).await?;
+
+            // Print the ZIP size immediately after connecting
+            if is_stdout {
+                eprintln!("- Remote ZIP size: {}", format_size(content_length));
+            } else {
+                main_pb.println(format!(
+                    "- Remote ZIP size: {}",
+                    format_size(content_length)
+                ));
+            }
+
+            (manifest, data_offset)
         }
         #[cfg(not(feature = "remote_zip"))]
         {
@@ -317,13 +380,27 @@ async fn main() -> Result<()> {
             if !is_stdout {
                 main_pb.println("- Preparing remote extraction...");
             }
-            Arc::new(
-                RemoteAsyncZipPayloadReader::new(
-                    payload_path_str.clone(),
-                    args.user_agent.as_deref(),
-                )
-                .await?,
+
+            let remote_reader = RemoteAsyncZipPayloadReader::new(
+                payload_path_str.clone(),
+                args.user_agent.as_deref(),
             )
+            .await?;
+
+            // Print remote ZIP size (for non-prefetch mode)
+            if is_stdout {
+                eprintln!(
+                    "- Remote ZIP size: {}",
+                    format_size(remote_reader.http_reader.content_length)
+                );
+            } else {
+                main_pb.println(format!(
+                    "- Remote ZIP size: {}",
+                    format_size(remote_reader.http_reader.content_length)
+                ));
+            }
+
+            Arc::new(remote_reader)
         }
         #[cfg(not(feature = "remote_zip"))]
         {
