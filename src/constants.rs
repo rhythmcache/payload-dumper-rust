@@ -1,5 +1,4 @@
 // ZIP signatures
-#[cfg(feature = "local_zip")]
 pub const ZIP_MAGIC: [u8; 2] = [0x50, 0x4B];
 
 #[cfg(feature = "local_zip")]
