@@ -10,6 +10,7 @@ use tokio::fs;
 use tokio::sync::Semaphore;
 
 mod args;
+mod constants;
 #[cfg(feature = "remote_zip")]
 mod http;
 #[cfg(feature = "metadata")]

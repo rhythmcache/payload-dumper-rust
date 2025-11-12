@@ -1,4 +1,5 @@
 use crate::DeltaArchiveManifest;
+use crate::constants::{PAYLOAD_MAGIC, ZIP_MAGIC};
 use anyhow::{Result, anyhow};
 use std::path::Path;
 use std::time::Duration;
@@ -10,10 +11,6 @@ pub enum FileType {
     Zip,
     Bin,
 }
-
-pub const ZIP_MAGIC: [u8; 2] = [0x50, 0x4B];
-pub const PAYLOAD_MAGIC: &[u8; 4] = b"CrAU";
-pub const SUPPORTED_PAYLOAD_VERSION: u64 = 2;
 
 pub async fn detect_file_type(path: &Path) -> Result<FileType> {
     let mut file = File::open(path).await?;

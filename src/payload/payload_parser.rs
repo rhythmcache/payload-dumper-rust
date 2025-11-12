@@ -1,7 +1,7 @@
 use crate::DeltaArchiveManifest;
+use crate::constants::{PAYLOAD_MAGIC, SUPPORTED_PAYLOAD_VERSION};
 #[cfg(feature = "remote_zip")]
 use crate::http::HttpReader;
-use crate::utils::{PAYLOAD_MAGIC, SUPPORTED_PAYLOAD_VERSION};
 #[cfg(feature = "local_zip")]
 use crate::zip::local_zip_io::LocalZipIO;
 #[cfg(feature = "local_zip")]

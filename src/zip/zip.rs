@@ -1,12 +1,6 @@
+use crate::constants::*;
 use crate::zip::zip_io::ZipIO;
 use anyhow::{Result, anyhow};
-
-// ZIP signatures
-pub const LOCAL_FILE_HEADER_SIGNATURE: [u8; 4] = [0x50, 0x4B, 0x03, 0x04];
-pub const CENTRAL_DIR_HEADER_SIGNATURE: [u8; 4] = [0x50, 0x4B, 0x01, 0x02];
-pub const EOCD_SIGNATURE: [u8; 4] = [0x50, 0x4B, 0x05, 0x06];
-pub const ZIP64_EOCD_SIGNATURE: [u8; 4] = [0x50, 0x4B, 0x06, 0x06];
-pub const ZIP64_EOCD_LOCATOR_SIGNATURE: [u8; 4] = [0x50, 0x4B, 0x06, 0x07];
 
 #[derive(Debug, Clone)]
 pub struct ZipEntry {
@@ -305,7 +299,7 @@ impl ZipParser {
         let mut magic = [0u8; 4];
         io.read_at(offset, &mut magic).await?;
 
-        if &magic != b"CrAU" {
+        if &magic != PAYLOAD_MAGIC {
             return Err(anyhow!(
                 "Invalid payload file: magic 'CrAU' not found at calculated offset"
             ));
