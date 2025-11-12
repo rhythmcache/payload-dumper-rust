@@ -3,16 +3,13 @@ use anyhow::Result;
 use async_trait::async_trait;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::AsyncSeekExt;
 use tokio::io::{AsyncRead, AsyncReadExt, BufReader};
-use tokio::sync::Semaphore;
 
 pub struct LocalAsyncZipPayloadReader {
     path: PathBuf,
     payload_offset: u64,
-    semaphore: Arc<Semaphore>,
 }
 
 impl LocalAsyncZipPayloadReader {
@@ -29,12 +26,9 @@ impl LocalAsyncZipPayloadReader {
         // verify it's actually a payload file
         crate::zip::zip::ZipParser::verify_payload_magic(&io, data_offset).await?;
 
-        let max_concurrent_reads = num_cpus::get() * 2;
-
         Ok(Self {
             path: zip_path,
             payload_offset: data_offset,
-            semaphore: Arc::new(Semaphore::new(max_concurrent_reads)),
         })
     }
 }
@@ -42,12 +36,10 @@ impl LocalAsyncZipPayloadReader {
 #[async_trait]
 impl AsyncPayloadRead for LocalAsyncZipPayloadReader {
     async fn open_reader(&self) -> Result<Box<dyn PayloadReader>> {
-        let permit = self.semaphore.clone().acquire_owned().await?;
         let file = File::open(&self.path).await?;
         Ok(Box::new(LocalZipPayloadReader {
             file: BufReader::new(file),
             payload_offset: self.payload_offset,
-            _permit: permit,
         }))
     }
 }
@@ -55,7 +47,6 @@ impl AsyncPayloadRead for LocalAsyncZipPayloadReader {
 struct LocalZipPayloadReader {
     file: BufReader<File>,
     payload_offset: u64,
-    _permit: tokio::sync::OwnedSemaphorePermit,
 }
 
 #[async_trait]
