@@ -65,10 +65,10 @@ async fn main() -> Result<()> {
     } else if let Some(threads) = args.threads {
         threads
     } else {
-        num_cpus::get()
+        (num_cpus::get() * 2).min(32) // cap at 32 threads
     };
 
-    println!("- Initialized {} thread(s)", thread_count);
+    println!("- Initialized {} thread(s) (2nproc)", thread_count);
 
     let start_time = Instant::now();
 
