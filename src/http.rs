@@ -1,10 +1,9 @@
 #![allow(unused)]
+use crate::constants::DEFAULT_USER_AGENT;
 use anyhow::{Result, anyhow};
 use reqwest::{Client, header};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-
-const DEFAULT_USER_AGENT: &str = env!("DEFAULT_USER_AGENT");
 
 lazy_static::lazy_static! {
     static ref ACCEPT_RANGES_WARNING_SHOWN: AtomicBool = AtomicBool::new(false);
