@@ -68,7 +68,7 @@ async fn main() -> Result<()> {
         (num_cpus::get() * 2).min(32) // cap at 32 threads
     };
 
-    println!("- Initialized {} thread(s) (2nproc)", thread_count);
+    println!("- Initialized {} thread(s)", thread_count);
 
     let start_time = Instant::now();
 
