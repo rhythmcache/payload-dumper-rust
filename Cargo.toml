@@ -1,6 +1,6 @@
 [package]
 name = "payload_dumper"
-version = "0.7.7"
+version = "0.7.8"
 edition = "2024"
 authors = ["rhythmcache"]
 description = "A fast and efficient Android OTA payload dumper written in Rust"
@@ -9,7 +9,12 @@ readme = "README.md"
 license = "Apache-2.0"
 homepage = "https://github.com/rhythmcache/payload-dumper-rust"
 keywords = ["dumper", "android", "ota", "extractor", "payload"]
-categories = ["command-line-utilities"]
+categories = [
+    "command-line-utilities",
+    "android",
+    "filesystem",
+    "compression"
+]
 
 include = [
     "src/**",
