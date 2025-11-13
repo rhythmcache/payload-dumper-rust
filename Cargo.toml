@@ -57,9 +57,14 @@ remote_zip = ["local_zip", "dep:reqwest", "dep:tokio-util"]
 hickory_dns = ["remote_zip", "dep:hickory-resolver", "reqwest?/hickory-dns"]
 prefetch = ["remote_zip", "dep:tempfile"]
 
+
 [profile.release]
-strip = true
-lto = true
-opt-level = "z"
+opt-level = 3
+lto = "fat"
 codegen-units = 1
 panic = "abort"
+strip = true
+debug = false
+incremental = false
+overflow-checks = false
+
