@@ -258,7 +258,7 @@ pub async fn parse_remote_bin_payload(
     #[cfg(feature = "remote_zip")]
     {
         let http_reader = HttpReader::new(url, user_agent).await?;
-        let content_length = http_reader.content_length;
+        //  let content_length = http_reader.content_length;
 
         let mut pos = 0u64;
 

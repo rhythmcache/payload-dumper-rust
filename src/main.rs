@@ -212,6 +212,15 @@ async fn main() -> Result<()> {
                     parse_remote_payload(payload_path_str.clone(), args.user_agent.as_deref())
                         .await?;
 
+                if is_stdout {
+                    eprintln!("- Remote ZIP size: {}", format_size(content_length));
+                } else {
+                    main_pb.println(format!(
+                        "- Remote ZIP size: {}",
+                        format_size(content_length)
+                    ));
+                }
+
                 (manifest, data_offset)
             }
             #[cfg(not(feature = "remote_zip"))]
@@ -400,7 +409,7 @@ async fn main() -> Result<()> {
                 .await?;
 
                 // Print remote ZIP size (for non-prefetch mode)
-                if is_stdout {
+                /*  if is_stdout {
                     eprintln!(
                         "- Remote ZIP size: {}",
                         format_size(remote_reader.http_reader.content_length)
@@ -410,7 +419,7 @@ async fn main() -> Result<()> {
                         "- Remote ZIP size: {}",
                         format_size(remote_reader.http_reader.content_length)
                     ));
-                }
+                }*/
 
                 Arc::new(remote_reader)
             }
