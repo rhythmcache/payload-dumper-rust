@@ -203,7 +203,7 @@ pub async fn dump_partition<P: AsyncPayloadRead>(
                 .progress_chars("▰▱ "),
         );
         pb.enable_steady_tick(tokio::time::Duration::from_secs(1));
-        pb.set_message(format!("Processing {} ({} ops)", partition_name, total_ops));
+        pb.set_message(partition_name.to_string());
         Some(pb)
     } else {
         None
