@@ -30,17 +30,17 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1.0.100"
 digest = "0.10.7"
-indicatif = "0.18.2"
+indicatif = "0.18.3"
 prost = "0.14.1"
 sha2 = "0.10.9"
 num_cpus = "1.17.0"
 hex = "0.4.3"
-clap = { version = "4.5.51", features = ["derive"] }
+clap = { version = "4.5.53", features = ["derive"] }
 serde = { version = "1.0.228", features = ["derive"], optional = true }
 serde_json = { version = "1.0.145", optional = true }
 tokio = { version = "1.48.0", features = ["rt", "rt-multi-thread", "io-util", "time", "full"] }
 futures = "0.3.31"
-async-compression = { version = "0.4.33", features = ["zstd", "xz", "bzip2", "tokio"] }
+async-compression = { version = "0.4.35", features = ["zstd", "xz", "bzip2", "tokio"] }
 async-trait = "0.1.89"
 tokio-util = { version = "0.7.17", features = ["io"], optional = true }
 url = "2.5.7"
