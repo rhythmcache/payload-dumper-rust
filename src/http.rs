@@ -5,9 +5,8 @@ use reqwest::{Client, header};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-lazy_static::lazy_static! {
-    static ref ACCEPT_RANGES_WARNING_SHOWN: AtomicBool = AtomicBool::new(false);
-}
+use std::sync::OnceLock;
+static ACCEPT_RANGES_WARNING_SHOWN: OnceLock<()> = OnceLock::new();
 
 /// HTTP client
 async fn create_http_client(user_agent: Option<&str>) -> Result<Client> {
@@ -142,10 +141,13 @@ impl HttpReader {
                         .map(|v| v == "bytes")
                         .unwrap_or(false);
 
-                    if !supports_ranges && !ACCEPT_RANGES_WARNING_SHOWN.swap(true, Ordering::SeqCst)
-                    {
-                        eprintln!("- Warning: Server doesn't advertise Accept-Ranges: bytes");
-                        eprintln!("- Extraction may fail if server doesn't support range requests");
+                    if !supports_ranges {
+                        ACCEPT_RANGES_WARNING_SHOWN.get_or_init(|| {
+                            eprintln!("- Warning: Server doesn't advertise Accept-Ranges: bytes");
+                            eprintln!(
+                                "- Extraction may fail if server doesn't support range requests"
+                            );
+                        });
                     }
 
                     // get content length
