@@ -1,6 +1,6 @@
 # payload-dumper-rust 🦀
 
-A fast Android OTA payload dumper written in Rust.
+A fast and efficient Android OTA payload dumper.
 
 ## What it does
 
