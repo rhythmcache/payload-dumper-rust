@@ -1,3 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 rhythmcache
+// https://github.com/rhythmcache/payload-dumper-rust
+//
+// This file is part of payload-dumper-rust. It implements components used for
+// extracting and processing Android OTA payloads.
+
 // ZIP signatures
 pub const ZIP_MAGIC: [u8; 2] = [0x50, 0x4B];
 

@@ -1,3 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 rhythmcache
+// https://github.com/rhythmcache/payload-dumper-rust
+//
+// This file is part of payload-dumper-rust. It implements components used for
+// extracting and processing Android OTA payloads.
+
 /*
  * Note: It is highly unlikely that a raw payload.bin file will ever be served
  * directly by any normal HTTP server unless it is a custom implementation.
