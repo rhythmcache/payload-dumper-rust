@@ -23,6 +23,7 @@ use crate::readers::local_reader::LocalAsyncPayloadReader;
 use crate::utils::format_elapsed_time;
 use crate::verify::verify_partitions_hash;
 use crate::{DeltaArchiveManifest, PartitionUpdate};
+use std::path::Path;
 
 /// Information about the data range needed for a partition
 #[derive(Debug, Clone)]
@@ -42,8 +43,8 @@ pub fn calculate_partition_range(
 
     for op in &partition.operations {
         // only consider operations that actually read from payload data
-        if let (Some(offset), Some(length)) = (op.data_offset, op.data_length) {
-            if length > 0 {
+        if let (Some(offset), Some(length)) = (op.data_offset, op.data_length)
+            && length > 0 {
                 let abs_offset = data_offset + offset;
                 let end_offset = abs_offset + length;
 
@@ -51,7 +52,6 @@ pub fn calculate_partition_range(
                 max_offset = max_offset.max(end_offset);
                 ops_with_data += 1;
             }
-        }
     }
 
     if ops_with_data == 0 || min_offset == u64::MAX {
@@ -67,7 +67,7 @@ pub fn calculate_partition_range(
 async fn download_partition_data_to_path(
     http_reader: &HttpReader,
     range: &PartitionDataRange,
-    temp_dir_path: &PathBuf,
+    temp_dir_path: &Path,
     partition_name: &str,
     progress_bar: &ProgressBar,
 ) -> Result<PathBuf> {

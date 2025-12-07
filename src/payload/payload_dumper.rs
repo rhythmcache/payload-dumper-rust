@@ -69,38 +69,43 @@ where
     Ok(total)
 }
 
+/// context for processing operations -> groups related parameters
+struct OperationContext<'a> {
+    data_offset: u64,
+    block_size: u64,
+    payload_reader: &'a mut dyn PayloadReader,
+    out_file: &'a mut File,
+    copy_buffer: &'a mut [u8],
+    zero_buffer: &'a [u8],
+}
+
 async fn process_operation_streaming(
     operation_index: usize,
     op: &InstallOperation,
-    data_offset: u64,
-    block_size: u64,
-    payload_reader: &mut dyn PayloadReader,
-    out_file: &mut File,
-    copy_buffer: &mut [u8],
-    zero_buffer: &[u8],
+    ctx: &mut OperationContext<'_>,
 ) -> Result<()> {
-    let offset = data_offset + op.data_offset.unwrap_or(0);
+    let offset = ctx.data_offset + op.data_offset.unwrap_or(0);
     let length = op.data_length.unwrap_or(0);
 
     match op.r#type() {
         install_operation::Type::Replace => {
-            let mut stream = payload_reader.read_range(offset, length).await?;
-            out_file
+            let mut stream = ctx.payload_reader.read_range(offset, length).await?;
+            ctx.out_file
                 .seek(std::io::SeekFrom::Start(
-                    op.dst_extents[0].start_block.unwrap_or(0) * block_size,
+                    op.dst_extents[0].start_block.unwrap_or(0) * ctx.block_size,
                 ))
                 .await?;
-            copy_with_buffer(&mut stream, out_file, copy_buffer).await?;
+            copy_with_buffer(&mut stream, ctx.out_file, ctx.copy_buffer).await?;
         }
         install_operation::Type::ReplaceXz => {
-            let stream = payload_reader.read_range(offset, length).await?;
+            let stream = ctx.payload_reader.read_range(offset, length).await?;
             let mut decoder = XzDecoder::new(BufReader::with_capacity(BUFREADER_SIZE, stream));
-            out_file
+            ctx.out_file
                 .seek(std::io::SeekFrom::Start(
-                    op.dst_extents[0].start_block.unwrap_or(0) * block_size,
+                    op.dst_extents[0].start_block.unwrap_or(0) * ctx.block_size,
                 ))
                 .await?;
-            match copy_with_buffer(&mut decoder, out_file, copy_buffer).await {
+            match copy_with_buffer(&mut decoder, ctx.out_file, ctx.copy_buffer).await {
                 Ok(_) => {}
                 Err(e) => {
                     println!(
@@ -112,14 +117,14 @@ async fn process_operation_streaming(
             }
         }
         install_operation::Type::ReplaceBz => {
-            let stream = payload_reader.read_range(offset, length).await?;
+            let stream = ctx.payload_reader.read_range(offset, length).await?;
             let mut decoder = BzDecoder::new(BufReader::with_capacity(BUFREADER_SIZE, stream));
-            out_file
+            ctx.out_file
                 .seek(std::io::SeekFrom::Start(
-                    op.dst_extents[0].start_block.unwrap_or(0) * block_size,
+                    op.dst_extents[0].start_block.unwrap_or(0) * ctx.block_size,
                 ))
                 .await?;
-            match copy_with_buffer(&mut decoder, out_file, copy_buffer).await {
+            match copy_with_buffer(&mut decoder, ctx.out_file, ctx.copy_buffer).await {
                 Ok(_) => {}
                 Err(e) => {
                     println!(
@@ -131,7 +136,7 @@ async fn process_operation_streaming(
             }
         }
         install_operation::Type::Zstd => {
-            let stream = payload_reader.read_range(offset, length).await?;
+            let stream = ctx.payload_reader.read_range(offset, length).await?;
             let mut decoder = ZstdDecoder::new(BufReader::with_capacity(BUFREADER_SIZE, stream));
 
             if op.dst_extents.len() != 1 {
@@ -142,12 +147,12 @@ async fn process_operation_streaming(
                 return Ok(());
             }
 
-            out_file
+            ctx.out_file
                 .seek(std::io::SeekFrom::Start(
-                    op.dst_extents[0].start_block.unwrap_or(0) * block_size,
+                    op.dst_extents[0].start_block.unwrap_or(0) * ctx.block_size,
                 ))
                 .await?;
-            match copy_with_buffer(&mut decoder, out_file, copy_buffer).await {
+            match copy_with_buffer(&mut decoder, ctx.out_file, ctx.copy_buffer).await {
                 Ok(_) => {}
                 Err(e) => {
                     println!(
@@ -160,13 +165,13 @@ async fn process_operation_streaming(
         }
         install_operation::Type::Zero => {
             for ext in &op.dst_extents {
-                out_file
+                ctx.out_file
                     .seek(std::io::SeekFrom::Start(
-                        ext.start_block.unwrap_or(0) * block_size,
+                        ext.start_block.unwrap_or(0) * ctx.block_size,
                     ))
                     .await?;
                 for _ in 0..ext.num_blocks.unwrap_or(0) {
-                    out_file.write_all(zero_buffer).await?;
+                    ctx.out_file.write_all(ctx.zero_buffer).await?;
                 }
             }
         }
@@ -238,18 +243,18 @@ pub async fn dump_partition<P: AsyncPayloadRead>(
     let mut copy_buffer = vec![0u8; COPY_BUFFER_SIZE];
     let zero_buffer = vec![0u8; block_size as usize];
 
+    // Create context to group related parameters
+    let mut ctx = OperationContext {
+        data_offset,
+        block_size,
+        payload_reader: &mut *reader,
+        out_file: &mut out_file,
+        copy_buffer: &mut copy_buffer,
+        zero_buffer: &zero_buffer,
+    };
+
     for (i, op) in partition.operations.iter().enumerate() {
-        process_operation_streaming(
-            i,
-            op,
-            data_offset,
-            block_size,
-            &mut *reader,
-            &mut out_file,
-            &mut copy_buffer,
-            &zero_buffer,
-        )
-        .await?;
+        process_operation_streaming(i, op, &mut ctx).await?;
 
         if let Some(pb) = &progress_bar {
             let percentage = ((i + 1) as f64 / total_ops as f64 * 100.0) as u64;

@@ -77,11 +77,10 @@ async fn save_metadata(
 
     for partition in &manifest.partitions {
         // Skip partition if filter is provided and partition is not in filter
-        if let Some(filter) = filter_partitions {
-            if !filter.contains(partition.partition_name.as_str()) {
+        if let Some(filter) = filter_partitions
+            && !filter.contains(partition.partition_name.as_str()) {
                 continue;
             }
-        }
 
         if let Some(info) = &partition.new_partition_info {
             let size_in_bytes = info.size.unwrap_or(0);

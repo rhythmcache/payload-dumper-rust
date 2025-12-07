@@ -249,7 +249,6 @@ pub async fn parse_local_zip_payload(zip_path: PathBuf) -> Result<(DeltaArchiveM
 }
 
 /// Parse payload from remote .bin file (not in ZIP)
-
 #[cfg(feature = "local_zip")]
 pub async fn parse_remote_bin_payload(
     url: String,
