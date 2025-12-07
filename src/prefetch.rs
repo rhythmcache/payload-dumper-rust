@@ -1,32 +1,30 @@
+use ahash::AHashMap as HashMap;
 use anyhow::{Result, anyhow};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use ahash::AHashMap as HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use tempfile::TempDir;
 use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::Semaphore;
 
 use crate::args::Args;
+use crate::http::HttpReader;
 use crate::payload::payload_dumper::{AsyncPayloadRead, PayloadReader, dump_partition};
 use crate::readers::local_reader::LocalAsyncPayloadReader;
-use crate::readers::remote_zip_reader::RemoteAsyncZipPayloadReader;
 use crate::utils::format_elapsed_time;
 use crate::verify::verify_partitions_hash;
 use crate::{DeltaArchiveManifest, PartitionUpdate};
 
-/// information about the data range needed for a partition
+/// Information about the data range needed for a partition
 #[derive(Debug, Clone)]
 pub struct PartitionDataRange {
     pub min_offset: u64,
-    // pub max_offset: u64,
     pub total_bytes: u64,
-    // pub operation_count: usize,
 }
 
-/// calculate the min/max data offsets for all operations in a partition
+/// Calculate the min/max data offsets for all operations in a partition
 pub fn calculate_partition_range(
     partition: &PartitionUpdate,
     data_offset: u64,
@@ -55,14 +53,12 @@ pub fn calculate_partition_range(
 
     Some(PartitionDataRange {
         min_offset,
-        //  max_offset,
         total_bytes: max_offset - min_offset,
-        //  operation_count: ops_with_data,
     })
 }
 
 async fn download_partition_data_to_path(
-    zip_reader: &RemoteAsyncZipPayloadReader,
+    http_reader: &HttpReader,
     range: &PartitionDataRange,
     temp_dir_path: &PathBuf,
     partition_name: &str,
@@ -77,27 +73,27 @@ async fn download_partition_data_to_path(
     let temp_path = temp_dir_path.join(format!("{}.prefetch", partition_name));
     let mut file = File::create(&temp_path).await?;
 
-    // open a reader for downloading
-    let mut reader = zip_reader.open_reader().await?;
-    let mut stream = reader
-        .read_range(range.min_offset, range.total_bytes)
-        .await?;
-
     const BUFFER_SIZE: usize = 256 * 1024; // 256 KB buffer for reading
     let mut buffer = vec![0u8; BUFFER_SIZE];
     let mut downloaded = 0u64;
     let total = range.total_bytes;
+    let mut current_offset = range.min_offset;
 
-    loop {
-        let n = stream.read(&mut buffer).await?;
-        if n == 0 {
-            break; // end of stream
-        }
+    while downloaded < total {
+        let remaining = total - downloaded;
+        let chunk_size = remaining.min(BUFFER_SIZE as u64) as usize;
 
-        // write what we read
-        file.write_all(&buffer[..n]).await?;
+        // Read chunk from HTTP
+        http_reader
+            .read_at(current_offset, &mut buffer[..chunk_size])
+            .await?;
 
-        downloaded += n as u64;
+        // Write to file
+        file.write_all(&buffer[..chunk_size]).await?;
+
+        downloaded += chunk_size as u64;
+        current_offset += chunk_size as u64;
+
         let percent = (downloaded as f64 / total as f64 * 100.0) as u64;
         progress_bar.set_position(percent);
     }
@@ -110,7 +106,7 @@ async fn download_partition_data_to_path(
     Ok(temp_path)
 }
 
-/// wrapper reader that translates offsets from absolute to relative
+/// Wrapper reader that translates offsets from absolute to relative
 struct OffsetTranslatingReader {
     inner: LocalAsyncPayloadReader,
     base_offset: u64,
@@ -170,6 +166,7 @@ pub async fn prefetch_and_extract(
     args: Arc<Args>,
     partitions_to_extract: Vec<PartitionUpdate>,
     multi_progress: Arc<MultiProgress>,
+    //file_type: RemoteFileType,
 ) -> Result<()> {
     let start_time = Instant::now();
 
@@ -183,14 +180,14 @@ pub async fn prefetch_and_extract(
 
     main_pb.set_message("Initializing prefetch mode...");
 
-    // mktmp
+    // Create temporary directory
     let temp_dir = TempDir::new()?;
     main_pb.println(format!(
         "- Created temporary directory: {:?}",
         temp_dir.path()
     ));
 
-    // calculate ranges for all partitions
+    // Calculate ranges for all partitions
     let mut partition_info: HashMap<String, PartitionDataRange> = HashMap::new();
     let mut total_download_size = 0u64;
 
@@ -215,10 +212,13 @@ pub async fn prefetch_and_extract(
         num_cpus::get()
     };
 
-    // get block size for extraction
+    // Get block size for extraction
     let block_size = manifest.block_size.unwrap_or(4096) as u64;
 
-    // download and extract partitions as soon as each download completes
+    // Create a single HttpReader that will be shared
+    let http_reader = Arc::new(HttpReader::new(url.clone(), args.user_agent.as_deref()).await?);
+
+    // Download and extract partitions as soon as each download completes
     main_pb.set_message("Downloading and extracting partitions...");
 
     let download_semaphore = Arc::new(Semaphore::new(thread_count));
@@ -234,6 +234,7 @@ pub async fn prefetch_and_extract(
             let partition = partition.clone();
             let args = Arc::clone(&args);
             let multi_progress = Arc::clone(&multi_progress);
+            let http_reader = Arc::clone(&http_reader);
 
             let download_pb = multi_progress.add(ProgressBar::new(100));
             download_pb.set_style(
@@ -244,23 +245,17 @@ pub async fn prefetch_and_extract(
             );
             download_pb.enable_steady_tick(tokio::time::Duration::from_secs(1));
 
-            let url = url.clone();
-            let user_agent = args.user_agent.clone();
             let download_semaphore = Arc::clone(&download_semaphore);
             let extract_semaphore = Arc::clone(&extract_semaphore);
 
-            // spawn combined download + extract task
+            // Spawn combined download + extract task
             let task = tokio::spawn(async move {
-                // download
+                // Download
                 let temp_path = {
                     let _permit = download_semaphore.acquire().await.unwrap();
 
-                    let zip_reader = RemoteAsyncZipPayloadReader::new(url, user_agent.as_deref())
-                        .await
-                        .map_err(|e| (partition_name.clone(), e))?;
-
                     let temp_path = download_partition_data_to_path(
-                        &zip_reader,
+                        &http_reader,
                         &range,
                         &temp_dir_path,
                         &partition_name,
@@ -269,12 +264,12 @@ pub async fn prefetch_and_extract(
                     .await
                     .map_err(|e| (partition_name.clone(), e))?;
 
-                    // release download permit before extraction
+                    // Release download permit before extraction
                     drop(_permit);
                     temp_path
                 };
 
-                // extract immediately after download completes
+                // Extract immediately after download completes
                 let _permit = extract_semaphore.acquire().await.unwrap();
 
                 let reader = OffsetTranslatingReader::new(temp_path, range.min_offset)
@@ -298,7 +293,7 @@ pub async fn prefetch_and_extract(
         }
     }
 
-    // wait for all download+extract tasks to complete
+    // Wait for all download+extract tasks to complete
     let results = futures::future::join_all(combined_tasks).await;
 
     let mut failed_partitions = Vec::new();

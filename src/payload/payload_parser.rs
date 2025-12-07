@@ -240,3 +240,71 @@ pub async fn parse_local_zip_payload(zip_path: PathBuf) -> Result<(DeltaArchiveM
     let zip_payload = ZipPayloadFile::new(zip_path).await?;
     parse_payload(zip_payload).await
 }
+
+/// Parse payload from remote .bin file (not in ZIP)
+
+#[cfg(feature = "local_zip")]
+pub async fn parse_remote_bin_payload(
+    url: String,
+    user_agent: Option<&str>,
+) -> Result<(DeltaArchiveManifest, u64)> {
+    #[cfg(feature = "remote_zip")]
+    {
+        let http_reader = HttpReader::new(url, user_agent).await?;
+        let content_length = http_reader.content_length;
+
+        let mut pos = 0u64;
+
+        // Helper to read and advance position
+        async fn read_at(http_reader: &HttpReader, pos: &mut u64, buf: &mut [u8]) -> Result<()> {
+            http_reader.read_at(*pos, buf).await?;
+            *pos += buf.len() as u64;
+            Ok(())
+        }
+
+        // Read and validate magic
+        let mut magic = [0u8; 4];
+        read_at(&http_reader, &mut pos, &mut magic).await?;
+        if &magic != PAYLOAD_MAGIC {
+            return Err(anyhow!("Invalid payload file: magic 'CrAU' not found"));
+        }
+
+        // Read and validate version
+        let mut buf = [0u8; 8];
+        read_at(&http_reader, &mut pos, &mut buf).await?;
+        let version = u64::from_be_bytes(buf);
+        if version != SUPPORTED_PAYLOAD_VERSION {
+            return Err(anyhow!("Unsupported payload version: {}", version));
+        }
+
+        // Read manifest size
+        read_at(&http_reader, &mut pos, &mut buf).await?;
+        let manifest_size = u64::from_be_bytes(buf);
+
+        // Read metadata signature size
+        let mut buf4 = [0u8; 4];
+        read_at(&http_reader, &mut pos, &mut buf4).await?;
+        let sig_size = u32::from_be_bytes(buf4);
+
+        // Read manifest
+        let mut manifest_bytes = vec![0u8; manifest_size as usize];
+        read_at(&http_reader, &mut pos, &mut manifest_bytes).await?;
+
+        // Skip signature
+        pos += sig_size as u64;
+
+        // Data offset is current position
+        let data_offset = pos;
+
+        // Decode manifest
+        let manifest = DeltaArchiveManifest::decode(&manifest_bytes[..])?;
+
+        Ok((manifest, data_offset))
+    }
+    #[cfg(not(feature = "remote_zip"))]
+    {
+        Err(anyhow!(
+            "Remote .bin support requires the 'remote_zip' feature"
+        ))
+    }
+}

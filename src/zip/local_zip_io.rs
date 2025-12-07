@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use std::path::PathBuf;
 
 pub struct LocalZipIO {
-    file: std::fs::File, 
+    file: std::fs::File,
     size: u64,
 }
 

@@ -3,8 +3,8 @@ use crate::cow_merge_operation;
 use crate::install_operation;
 use crate::structs::*;
 use crate::utils::format_size;
-use anyhow::Result;
 use ahash::{AHashMap as HashMap, AHashSet as HashSet};
+use anyhow::Result;
 use std::path::Path;
 use tokio::fs;
 
