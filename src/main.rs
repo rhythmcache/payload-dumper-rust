@@ -234,8 +234,20 @@ async fn main() -> Result<()> {
                 if !is_stdout {
                     main_pb.println("- Connecting to remote .bin file...");
                 }
-                parse_remote_bin_payload(payload_path_str.clone(), args.user_agent.as_deref())
-                    .await?
+                let (manifest, data_offset, content_length) =
+                    parse_remote_bin_payload(payload_path_str.clone(), args.user_agent.as_deref())
+                        .await?;
+
+                if is_stdout {
+                    eprintln!("- Remote .bin size: {}", format_size(content_length));
+                } else {
+                    main_pb.println(format!(
+                        "- Remote .bin size: {}",
+                        format_size(content_length)
+                    ));
+                }
+
+                (manifest, data_offset)
             }
             #[cfg(not(feature = "remote_zip"))]
             {
@@ -440,19 +452,6 @@ async fn main() -> Result<()> {
                     args.user_agent.as_deref(),
                 )
                 .await?;
-
-                if is_stdout {
-                    eprintln!(
-                        "- Remote .bin size: {}",
-                        format_size(remote_reader.http_reader.content_length)
-                    );
-                } else {
-                    main_pb.println(format!(
-                        "- Remote .bin size: {}",
-                        format_size(remote_reader.http_reader.content_length)
-                    ));
-                }
-
                 Arc::new(remote_reader)
             }
             #[cfg(not(feature = "remote_zip"))]
