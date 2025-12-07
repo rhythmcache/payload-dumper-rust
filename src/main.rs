@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use ahash::AHashSet as HashSet;
 use std::sync::Arc;
 use std::time::Instant;
 

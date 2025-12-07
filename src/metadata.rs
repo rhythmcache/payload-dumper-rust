@@ -4,7 +4,7 @@ use crate::install_operation;
 use crate::structs::*;
 use crate::utils::format_size;
 use anyhow::Result;
-use std::collections::{HashMap, HashSet};
+use ahash::{AHashMap as HashMap, AHashSet as HashSet};
 use std::path::Path;
 use tokio::fs;
 

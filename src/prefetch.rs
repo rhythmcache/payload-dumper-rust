@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use std::collections::HashMap;
+use ahash::AHashMap as HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
