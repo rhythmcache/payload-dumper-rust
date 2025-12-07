@@ -42,17 +42,16 @@ impl AsyncPayloadRead for Arc<dyn AsyncPayloadRead> {
     }
 }
 
-/// custom copy function with configurable buffer size
-async fn copy_with_buffer<R, W>(reader: &mut R, writer: &mut W) -> Result<u64>
+/// custom copy function with reusable buffer
+async fn copy_with_buffer<R, W>(reader: &mut R, writer: &mut W, buf: &mut [u8]) -> Result<u64>
 where
     R: AsyncRead + Unpin,
     W: AsyncWriteExt + Unpin,
 {
-    let mut buf = vec![0u8; COPY_BUFFER_SIZE];
     let mut total = 0u64;
 
     loop {
-        let n = reader.read(&mut buf).await?;
+        let n = reader.read(buf).await?;
         if n == 0 {
             break;
         }
@@ -70,6 +69,8 @@ async fn process_operation_streaming(
     block_size: u64,
     payload_reader: &mut dyn PayloadReader,
     out_file: &mut File,
+    copy_buffer: &mut [u8],
+    zero_buffer: &[u8],
 ) -> Result<()> {
     let offset = data_offset + op.data_offset.unwrap_or(0);
     let length = op.data_length.unwrap_or(0);
@@ -82,7 +83,7 @@ async fn process_operation_streaming(
                     op.dst_extents[0].start_block.unwrap_or(0) * block_size,
                 ))
                 .await?;
-            copy_with_buffer(&mut stream, out_file).await?;
+            copy_with_buffer(&mut stream, out_file, copy_buffer).await?;
         }
         install_operation::Type::ReplaceXz => {
             let stream = payload_reader.read_range(offset, length).await?;
@@ -92,7 +93,7 @@ async fn process_operation_streaming(
                     op.dst_extents[0].start_block.unwrap_or(0) * block_size,
                 ))
                 .await?;
-            match copy_with_buffer(&mut decoder, out_file).await {
+            match copy_with_buffer(&mut decoder, out_file, copy_buffer).await {
                 Ok(_) => {}
                 Err(e) => {
                     println!(
@@ -111,7 +112,7 @@ async fn process_operation_streaming(
                     op.dst_extents[0].start_block.unwrap_or(0) * block_size,
                 ))
                 .await?;
-            match copy_with_buffer(&mut decoder, out_file).await {
+            match copy_with_buffer(&mut decoder, out_file, copy_buffer).await {
                 Ok(_) => {}
                 Err(e) => {
                     println!(
@@ -126,59 +127,31 @@ async fn process_operation_streaming(
             let stream = payload_reader.read_range(offset, length).await?;
             let mut decoder = ZstdDecoder::new(BufReader::with_capacity(BUFREADER_SIZE, stream));
 
-            if op.dst_extents.len() == 1 {
-                out_file
-                    .seek(std::io::SeekFrom::Start(
-                        op.dst_extents[0].start_block.unwrap_or(0) * block_size,
-                    ))
-                    .await?;
-                match copy_with_buffer(&mut decoder, out_file).await {
-                    Ok(_) => {}
-                    Err(e) => {
-                        println!(
-                            "  Warning: Skipping operation {} due to Zstd decompression error: {}",
-                            operation_index, e
-                        );
-                        return Ok(());
-                    }
-                }
-            } else {
-                let mut decompressed = Vec::new();
-                match decoder.read_to_end(&mut decompressed).await {
-                    Ok(_) => {
-                        let mut pos = 0;
-                        for ext in &op.dst_extents {
-                            let ext_size = (ext.num_blocks.unwrap_or(0) * block_size) as usize;
-                            let end_pos = pos + ext_size;
-                            if end_pos <= decompressed.len() {
-                                out_file
-                                    .seek(std::io::SeekFrom::Start(
-                                        ext.start_block.unwrap_or(0) * block_size,
-                                    ))
-                                    .await?;
-                                out_file.write_all(&decompressed[pos..end_pos]).await?;
-                                pos = end_pos;
-                            } else {
-                                println!(
-                                    "  Warning: Skipping extent in operation {} due to insufficient data.",
-                                    operation_index
-                                );
-                                break;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        println!(
-                            "  Warning: Skipping operation {} due to Zstd error: {}",
-                            operation_index, e
-                        );
-                        return Ok(());
-                    }
+            if op.dst_extents.len() != 1 {
+                println!(
+                    "  Warning: Skipping operation {} - multi-extent Zstd not supported",
+                    operation_index
+                );
+                return Ok(());
+            }
+
+            out_file
+                .seek(std::io::SeekFrom::Start(
+                    op.dst_extents[0].start_block.unwrap_or(0) * block_size,
+                ))
+                .await?;
+            match copy_with_buffer(&mut decoder, out_file, copy_buffer).await {
+                Ok(_) => {}
+                Err(e) => {
+                    println!(
+                        "  Warning: Skipping operation {} due to Zstd decompression error: {}",
+                        operation_index, e
+                    );
+                    return Ok(());
                 }
             }
         }
         install_operation::Type::Zero => {
-            let zeros = vec![0u8; block_size as usize];
             for ext in &op.dst_extents {
                 out_file
                     .seek(std::io::SeekFrom::Start(
@@ -186,7 +159,7 @@ async fn process_operation_streaming(
                     ))
                     .await?;
                 for _ in 0..ext.num_blocks.unwrap_or(0) {
-                    out_file.write_all(&zeros).await?;
+                    out_file.write_all(zero_buffer).await?;
                 }
             }
         }
@@ -254,9 +227,22 @@ pub async fn dump_partition<P: AsyncPayloadRead>(
 
     let mut reader = payload_reader.open_reader().await?;
 
+    // allocate reusable buffers once
+    let mut copy_buffer = vec![0u8; COPY_BUFFER_SIZE];
+    let zero_buffer = vec![0u8; block_size as usize];
+
     for (i, op) in partition.operations.iter().enumerate() {
-        process_operation_streaming(i, op, data_offset, block_size, &mut *reader, &mut out_file)
-            .await?;
+        process_operation_streaming(
+            i,
+            op,
+            data_offset,
+            block_size,
+            &mut *reader,
+            &mut out_file,
+            &mut copy_buffer,
+            &zero_buffer,
+        )
+        .await?;
 
         if let Some(pb) = &progress_bar {
             let percentage = ((i + 1) as f64 / total_ops as f64 * 100.0) as u64;
