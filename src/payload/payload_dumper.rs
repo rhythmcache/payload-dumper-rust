@@ -253,10 +253,7 @@ pub async fn dump_partition<P: AsyncPayloadRead>(
     out_file.flush().await?;
 
     if let Some(pb) = progress_bar {
-        pb.finish_with_message(format!(
-            "✓ Completed {} ({} ops)",
-            partition_name, total_ops
-        ));
+        pb.finish_with_message(format!("✓ {} ({} ops)", partition_name, total_ops));
     }
 
     Ok(())
