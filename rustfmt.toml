@@ -1,8 +1,0 @@
-max_width = 100
-use_small_heuristics = "Default"
-fn_params_layout = "Tall"
-match_block_trailing_comma = false
-chain_width = 60
-reorder_imports = true
-reorder_modules = true
-edition = "2024"
