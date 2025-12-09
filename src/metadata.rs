@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 rhythmcache
 // https://github.com/rhythmcache/payload-dumper-rust
-//
-// This file is part of payload-dumper-rust. It implements components used for
-// extracting and processing Android OTA payloads.
 
 use crate::DeltaArchiveManifest;
 use crate::cow_merge_operation;
@@ -12,64 +9,13 @@ use crate::structs::*;
 use crate::utils::format_size;
 use ahash::{AHashMap as HashMap, AHashSet as HashSet};
 use anyhow::Result;
-use std::path::Path;
-use tokio::fs;
 
-pub async fn handle_metadata_extraction(
+pub async fn get_metadata(
     manifest: &DeltaArchiveManifest,
-    out_dir: &std::path::Path,
-    data_offset: u64,
-    mode: &str,
-    images_filter: &str,
-    is_stdout: bool,
-) -> Result<()> {
-    let full_mode = mode == "full";
-    let filter_partitions = if !images_filter.is_empty() {
-        let images: HashSet<&str> = images_filter.split(',').collect();
-        Some(images)
-    } else {
-        None
-    };
-
-    match save_metadata(
-        manifest,
-        out_dir,
-        data_offset,
-        full_mode,
-        filter_partitions.as_ref(),
-    )
-    .await
-    {
-        Ok(json) => {
-            if is_stdout {
-                println!("{}", json);
-            } else {
-                let mode_str = if full_mode { " (full mode)" } else { "" };
-                let filter_str = if filter_partitions.is_some() {
-                    format!(" for {} partition(s)", images_filter.split(',').count())
-                } else {
-                    String::new()
-                };
-                println!(
-                    "✓ Metadata{}{} saved to: {}/payload_metadata.json",
-                    mode_str,
-                    filter_str,
-                    out_dir.display()
-                );
-            }
-            Ok(())
-        }
-        Err(e) => Err(e),
-    }
-}
-
-async fn save_metadata(
-    manifest: &DeltaArchiveManifest,
-    output_dir: &Path,
     data_offset: u64,
     full_mode: bool,
     filter_partitions: Option<&HashSet<&str>>,
-) -> Result<String> {
+) -> Result<PayloadMetadata> {
     let mut partitions = Vec::new();
     let mut total_payload_size = 0u64;
     let mut total_operations = 0usize;
@@ -78,9 +24,10 @@ async fn save_metadata(
     for partition in &manifest.partitions {
         // Skip partition if filter is provided and partition is not in filter
         if let Some(filter) = filter_partitions
-            && !filter.contains(partition.partition_name.as_str()) {
-                continue;
-            }
+            && !filter.contains(partition.partition_name.as_str())
+        {
+            continue;
+        }
 
         if let Some(info) = &partition.new_partition_info {
             let size_in_bytes = info.size.unwrap_or(0);
@@ -378,15 +325,5 @@ async fn save_metadata(
         total_operations_count: total_operations,
         global_operation_stats,
     };
-
-    let json = serde_json::to_string_pretty(&payload_metadata)?;
-
-    if output_dir.to_string_lossy() == "-" {
-        return Ok(json);
-    }
-
-    let metadata_path = output_dir.join("payload_metadata.json");
-    fs::write(metadata_path, &json).await?;
-
-    Ok(json)
+    Ok(payload_metadata)
 }

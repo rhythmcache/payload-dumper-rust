@@ -1,18 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 rhythmcache
 // https://github.com/rhythmcache/payload-dumper-rust
-//
-// This file is part of payload-dumper-rust. It implements components used for
-// extracting and processing Android OTA payloads.
 
 use crate::DeltaArchiveManifest;
 use crate::constants::{PAYLOAD_MAGIC, SUPPORTED_PAYLOAD_VERSION};
 #[cfg(feature = "remote_zip")]
 use crate::http::HttpReader;
 #[cfg(feature = "local_zip")]
-use crate::zip::local_zip_io::LocalZipIO;
+use crate::zip::core_parser::ZipParser;
 #[cfg(feature = "local_zip")]
-use crate::zip::zip::ZipParser;
+use crate::zip::local_zip_io::LocalZipIO;
 use anyhow::{Result, anyhow};
 use prost::Message;
 #[cfg(feature = "local_zip")]

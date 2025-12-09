@@ -1,17 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 rhythmcache
 // https://github.com/rhythmcache/payload-dumper-rust
-//
-// This file is part of payload-dumper-rust. It implements components used for
-// extracting and processing Android OTA payloads.
 
-use crate::DeltaArchiveManifest;
 use crate::constants::{PAYLOAD_MAGIC, ZIP_MAGIC};
 use anyhow::{Result, anyhow};
-use std::path::Path;
 use std::time::Duration;
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
 
 #[derive(Debug, PartialEq)]
 pub enum FileType {
@@ -19,52 +12,18 @@ pub enum FileType {
     Bin,
 }
 
-pub async fn detect_file_type(path: &Path) -> Result<FileType> {
-    let mut file = File::open(path).await?;
-    let mut magic = [0u8; 4];
-    file.read_exact(&mut magic).await?;
-
+/// detects file type from magic bytes
+pub fn detect_file(magic: &[u8; 4]) -> Result<FileType> {
     if magic.starts_with(&ZIP_MAGIC) {
         return Ok(FileType::Zip);
     }
 
-    if &magic == PAYLOAD_MAGIC {
+    if magic == PAYLOAD_MAGIC {
         return Ok(FileType::Bin);
     }
 
     Err(anyhow!(
-        "Magic mismatch in file {:?}: got {:02X?}, expected 'PK' or 'CrAU'",
-        path.file_name().unwrap_or_default(),
-        magic
-    ))
-}
-
-#[cfg(feature = "remote_zip")]
-pub async fn detect_remote_file_type(url: &str, user_agent: Option<&str>) -> Result<FileType> {
-    use crate::http::HttpReader;
-    use anyhow::Context;
-
-    let http_reader = HttpReader::new(url.to_string(), user_agent)
-        .await
-        .context("Failed to initialize HTTP reader")?;
-
-    let mut magic = [0u8; 4];
-    http_reader
-        .read_at(0, &mut magic)
-        .await
-        .context("Failed to read magic bytes from remote file")?;
-
-    if magic.starts_with(&ZIP_MAGIC) {
-        return Ok(FileType::Zip);
-    }
-
-    if &magic == PAYLOAD_MAGIC {
-        return Ok(FileType::Bin);
-    }
-
-    Err(anyhow!(
-        "Magic mismatch in remote file {}: got {:02X?}, expected 'PK' or 'CrAU'",
-        url,
+        "Magic mismatch: got {:02X?}, expected 'PK' or 'CrAU'",
         magic
     ))
 }
@@ -98,28 +57,5 @@ pub fn format_size(size: u64) -> String {
         format!("{:.2} KB", size as f64 / KB as f64)
     } else {
         format!("{} bytes", size)
-    }
-}
-
-pub fn list_partitions(manifest: &DeltaArchiveManifest) {
-    println!("{:<20} {:<15}", "Partition Name", "Size");
-    println!("{}", "-".repeat(35));
-
-    for partition in &manifest.partitions {
-        let size = partition
-            .new_partition_info
-            .as_ref()
-            .and_then(|info| info.size)
-            .unwrap_or(0);
-
-        println!(
-            "{:<20} {:<15}",
-            partition.partition_name,
-            if size > 0 {
-                format_size(size)
-            } else {
-                "Unknown".to_string()
-            }
-        );
     }
 }

@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 rhythmcache
 // https://github.com/rhythmcache/payload-dumper-rust
-//
-// This file is part of payload-dumper-rust. It implements components used for
-// extracting and processing Android OTA payloads.
 
 #![allow(unused)]
 use crate::constants::DEFAULT_USER_AGENT;
@@ -12,8 +9,8 @@ use reqwest::{Client, header};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use std::sync::OnceLock;
-static ACCEPT_RANGES_WARNING_SHOWN: OnceLock<()> = OnceLock::new();
+// use std::sync::OnceLock;
+// static ACCEPT_RANGES_WARNING_SHOWN: OnceLock<()> = OnceLock::new();
 
 /// HTTP client
 async fn create_http_client(user_agent: Option<&str>) -> Result<Client> {
@@ -147,16 +144,16 @@ impl HttpReader {
                         .and_then(|v| v.to_str().ok())
                         .map(|v| v == "bytes")
                         .unwrap_or(false);
-
-                    if !supports_ranges {
-                        ACCEPT_RANGES_WARNING_SHOWN.get_or_init(|| {
-                            eprintln!("- Warning: Server doesn't advertise Accept-Ranges: bytes");
-                            eprintln!(
-                                "- Extraction may fail if server doesn't support range requests"
-                            );
-                        });
-                    }
-
+                    /*
+                                        if !supports_ranges {
+                                            ACCEPT_RANGES_WARNING_SHOWN.get_or_init(|| {
+                                                eprintln!("- Warning: Server doesn't advertise Accept-Ranges: bytes");
+                                                eprintln!(
+                                                    "- Extraction may fail if server doesn't support range requests"
+                                                );
+                                            });
+                                        }
+                    */
                     // get content length
                     let content_length = response
                         .headers()

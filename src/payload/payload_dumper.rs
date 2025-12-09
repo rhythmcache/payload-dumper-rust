@@ -1,25 +1,48 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 rhythmcache
 // https://github.com/rhythmcache/payload-dumper-rust
-//
-// This file is part of payload-dumper-rust. It implements components used for
-// extracting and processing Android OTA payloads.
 
+#![allow(dead_code)]
 use anyhow::{Result, anyhow};
 use async_compression::tokio::bufread::{BzDecoder, XzDecoder, ZstdDecoder};
 use async_trait::async_trait;
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
 
 pub use crate::PartitionUpdate;
-use crate::args::Args;
 use crate::{InstallOperation, install_operation};
 
 const BUFREADER_SIZE: usize = 64 * 1024; // 64 KB for BufReader (decompression streams)
 const COPY_BUFFER_SIZE: usize = 128 * 1024; // 128 KB for direct copy operations
+
+/// progress reporting trait for partition extraction
+/// implement this to receive progress updates during extraction
+#[async_trait]
+pub trait ProgressReporter: Send + Sync {
+    /// called when extraction starts for a partition
+    fn on_start(&self, partition_name: &str, total_operations: u64);
+
+    /// called after each operation completes
+    fn on_progress(&self, partition_name: &str, current_op: u64, total_ops: u64);
+
+    /// called when extraction completes successfully
+    fn on_complete(&self, partition_name: &str, total_operations: u64);
+
+    /// called when a non-fatal warning occurs (operation skipped, etc.)
+    fn on_warning(&self, partition_name: &str, operation_index: usize, message: String);
+}
+
+/// no-op reporter for headless/library use
+pub struct NoOpReporter;
+
+impl ProgressReporter for NoOpReporter {
+    fn on_start(&self, _: &str, _: u64) {}
+    fn on_progress(&self, _: &str, _: u64, _: u64) {}
+    fn on_complete(&self, _: &str, _: u64) {}
+    fn on_warning(&self, _: &str, _: usize, _: String) {}
+}
 
 #[async_trait]
 pub trait AsyncPayloadRead: Send + Sync {
@@ -83,6 +106,8 @@ async fn process_operation_streaming(
     operation_index: usize,
     op: &InstallOperation,
     ctx: &mut OperationContext<'_>,
+    reporter: &dyn ProgressReporter,
+    partition_name: &str,
 ) -> Result<()> {
     let offset = ctx.data_offset + op.data_offset.unwrap_or(0);
     let length = op.data_length.unwrap_or(0);
@@ -108,9 +133,10 @@ async fn process_operation_streaming(
             match copy_with_buffer(&mut decoder, ctx.out_file, ctx.copy_buffer).await {
                 Ok(_) => {}
                 Err(e) => {
-                    println!(
-                        "  Warning: Skipping operation {} due to XZ decompression error: {}",
-                        operation_index, e
+                    reporter.on_warning(
+                        partition_name,
+                        operation_index,
+                        format!("XZ decompression error: {}", e),
                     );
                     return Ok(());
                 }
@@ -127,9 +153,10 @@ async fn process_operation_streaming(
             match copy_with_buffer(&mut decoder, ctx.out_file, ctx.copy_buffer).await {
                 Ok(_) => {}
                 Err(e) => {
-                    println!(
-                        "  Warning: Skipping operation {} due to BZ2 decompression error: {}",
-                        operation_index, e
+                    reporter.on_warning(
+                        partition_name,
+                        operation_index,
+                        format!("BZ2 decompression error: {}", e),
                     );
                     return Ok(());
                 }
@@ -140,9 +167,10 @@ async fn process_operation_streaming(
             let mut decoder = ZstdDecoder::new(BufReader::with_capacity(BUFREADER_SIZE, stream));
 
             if op.dst_extents.len() != 1 {
-                println!(
-                    "  Warning: Skipping operation {} - multi-extent Zstd not supported",
-                    operation_index
+                reporter.on_warning(
+                    partition_name,
+                    operation_index,
+                    "Multi-extent Zstd not supported".to_string(),
                 );
                 return Ok(());
             }
@@ -155,9 +183,10 @@ async fn process_operation_streaming(
             match copy_with_buffer(&mut decoder, ctx.out_file, ctx.copy_buffer).await {
                 Ok(_) => {}
                 Err(e) => {
-                    println!(
-                        "  Warning: Skipping operation {} due to Zstd decompression error: {}",
-                        operation_index, e
+                    reporter.on_warning(
+                        partition_name,
+                        operation_index,
+                        format!("Zstd decompression error: {}", e),
                     );
                     return Ok(());
                 }
@@ -185,9 +214,10 @@ async fn process_operation_streaming(
             ));
         }
         _ => {
-            println!(
-                "  Warning: Skipping operation {} due to unknown operation type",
-                operation_index
+            reporter.on_warning(
+                partition_name,
+                operation_index,
+                "Unknown operation type".to_string(),
             );
             return Ok(());
         }
@@ -195,39 +225,29 @@ async fn process_operation_streaming(
     Ok(())
 }
 
-pub async fn dump_partition<P: AsyncPayloadRead>(
+/// dump a partition to disk
+///
+/// # Arguments
+/// * `partition` -> the partition metadata
+/// * `data_offset` -> offset in payload file where data begins
+/// * `block_size` -> block size for the partition
+/// * `output_path` -> where to write the partition image
+/// * `payload_reader` -> reader for the payload data
+/// * `reporter` -> progress reporter implementation
+pub async fn dump_partition<P: AsyncPayloadRead, R: ProgressReporter>(
     partition: &PartitionUpdate,
     data_offset: u64,
     block_size: u64,
-    args: &Args,
+    output_path: std::path::PathBuf,
     payload_reader: &P,
-    multi_progress: Option<&MultiProgress>,
+    reporter: &R,
 ) -> Result<()> {
     let partition_name = &partition.partition_name;
     let total_ops = partition.operations.len() as u64;
 
-    let progress_bar = if let Some(mp) = multi_progress {
-        let pb = mp.add(ProgressBar::new(100));
-        pb.set_style(
-            ProgressStyle::default_bar()
-                .template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/white}] {percent}% - {msg}")
-                .unwrap()
-                .progress_chars("▰▱ "),
-        );
-        pb.enable_steady_tick(tokio::time::Duration::from_secs(1));
-        pb.set_message(partition_name.to_string());
-        Some(pb)
-    } else {
-        None
-    };
+    reporter.on_start(partition_name, total_ops);
 
-    let out_dir = &args.out;
-    if args.out.to_string_lossy() != "-" {
-        tokio::fs::create_dir_all(out_dir).await?;
-    }
-
-    let out_path = out_dir.join(format!("{}.img", partition_name));
-    let mut out_file = File::create(&out_path).await?;
+    let mut out_file = File::create(&output_path).await?;
 
     if let Some(info) = &partition.new_partition_info {
         if let Some(size) = info.size {
@@ -254,19 +274,13 @@ pub async fn dump_partition<P: AsyncPayloadRead>(
     };
 
     for (i, op) in partition.operations.iter().enumerate() {
-        process_operation_streaming(i, op, &mut ctx).await?;
-
-        if let Some(pb) = &progress_bar {
-            let percentage = ((i + 1) as f64 / total_ops as f64 * 100.0) as u64;
-            pb.set_position(percentage);
-        }
+        process_operation_streaming(i, op, &mut ctx, reporter, partition_name).await?;
+        reporter.on_progress(partition_name, (i + 1) as u64, total_ops);
     }
 
     out_file.flush().await?;
 
-    if let Some(pb) = progress_bar {
-        pb.finish_with_message(format!("✓ {} ({} ops)", partition_name, total_ops));
-    }
+    reporter.on_complete(partition_name, total_ops);
 
     Ok(())
 }

@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 rhythmcache
 // https://github.com/rhythmcache/payload-dumper-rust
-//
-// This file is part of payload-dumper-rust. It implements components used for
-// extracting and processing Android OTA payloads.
 
 use crate::http::HttpReader;
 use crate::payload::payload_dumper::{AsyncPayloadRead, PayloadReader};
-use crate::zip::zip::ZipParser;
+use crate::zip::core_parser::ZipParser;
 use anyhow::Result;
 use async_trait::async_trait;
 use futures::StreamExt;
