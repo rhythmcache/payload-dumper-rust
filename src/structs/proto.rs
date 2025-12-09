@@ -1,1 +1,2 @@
-include!("../update_metadata.rs");
+include!("../chromeos_update_engine.rs");
+
