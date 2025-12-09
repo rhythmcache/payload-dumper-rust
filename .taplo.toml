@@ -1,0 +1,7 @@
+[formatting]
+indent_string       = "    "
+align_entries       = true
+sort_keys           = true
+allowed_blank_lines = 1
+array_auto_expand   = true
+array_auto_collapse = true
