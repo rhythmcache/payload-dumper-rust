@@ -6,6 +6,7 @@
 // extracting and processing Android OTA payloads.
 
 use std::env;
+use std::path::Path;
 use std::process::Command;
 
 fn main() {
@@ -135,5 +136,73 @@ fn main() {
 
     if std::path::Path::new(".git/HEAD").exists() {
         println!("cargo:rerun-if-changed=.git/HEAD");
+    }
+
+    // Protobuf compilation
+    compile_protos();
+}
+
+fn compile_protos() {
+    let proto_file = "proto/update_metadata.proto";
+    let proto_path = Path::new(proto_file);
+    let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
+    let out_file = Path::new(&out_dir).join("chromeos_update_engine.rs");
+    let precompiled = Path::new("src/chromeos_update_engine.rs");
+
+    // Check if proto file exists
+    if !proto_path.exists() {
+        println!(
+            "cargo:warning=Proto file not found at {}, using pre-compiled version",
+            proto_file
+        );
+        copy_precompiled_to_out(&precompiled, &out_file);
+        return;
+    }
+
+    // Check if protoc is available
+    let protoc_available = Command::new("protoc")
+        .arg("--version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
+
+    if !protoc_available {
+        println!("cargo:warning=protoc command not found, using pre-compiled version");
+        copy_precompiled_to_out(&precompiled, &out_file);
+        return;
+    }
+
+    // Both proto file and protoc exist, proceed with compilation
+    println!("cargo:rerun-if-changed={}", proto_file);
+
+    match prost_build::Config::new()
+        .out_dir(&out_dir)
+        .compile_protos(&[proto_file], &["proto/"])
+    {
+        Ok(_) => {
+            println!(
+                "cargo:warning=Successfully compiled protobuf to {}/chromeos_update_engine.rs",
+                out_dir
+            );
+        }
+        Err(e) => {
+            println!(
+                "cargo:warning=Failed to compile protobuf: {}. Using pre-compiled version.",
+                e
+            );
+            copy_precompiled_to_out(&precompiled, &out_file);
+        }
+    }
+}
+
+fn copy_precompiled_to_out(precompiled: &Path, out_file: &Path) {
+    if precompiled.exists() {
+        if let Err(e) = std::fs::copy(precompiled, out_file) {
+            panic!("Failed to copy pre-compiled protobuf file: {}", e);
+        } else {
+            println!("cargo:warning=Copied pre-compiled protobuf to OUT_DIR");
+        }
+    } else {
+        panic!("Neither protoc nor pre-compiled protobuf file found!");
     }
 }

@@ -60,7 +60,8 @@ tempfile = { version = "3.23.0", optional = true }
 ahash = "0.8.12"
 
 [build-dependencies]
-chrono = "0.4.42"
+chrono      = "0.4.42"
+prost-build = "0.14.1"
 
 [features]
 default     = ["local_zip", "metadata", "remote_zip", "prefetch"]
