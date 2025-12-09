@@ -11,7 +11,14 @@ homepage    = "https://github.com/rhythmcache/payload-dumper-rust"
 keywords    = ["dumper", "android", "ota", "extractor", "payload"]
 categories  = ["command-line-utilities", "filesystem", "compression"]
 
-include = ["src/**", "LICENSE", "README.md", "Cargo.toml", "build.rs"]
+include = [
+    "src/**",
+    "proto/update_metadata.proto",
+    "LICENSE",
+    "README.md",
+    "Cargo.toml",
+    "build.rs",
+]
 
 [lib]
 name = "payload_dumper"
