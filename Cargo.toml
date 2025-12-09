@@ -1,27 +1,17 @@
 [package]
-name = "payload_dumper"
-version = "0.8.0"
-edition = "2024"
-authors = ["rhythmcache"]
+name        = "payload_dumper"
+version     = "0.8.0"
+edition     = "2024"
+authors     = ["rhythmcache"]
 description = "A fast and efficient Android OTA payload dumper"
-repository = "https://github.com/rhythmcache/payload-dumper-rust"
-readme = "README.md"
-license = "Apache-2.0"
-homepage = "https://github.com/rhythmcache/payload-dumper-rust"
-keywords = ["dumper", "android", "ota", "extractor", "payload"]
-categories = [
-    "command-line-utilities",
-    "filesystem",
-    "compression"
-]
+repository  = "https://github.com/rhythmcache/payload-dumper-rust"
+readme      = "README.md"
+license     = "Apache-2.0"
+homepage    = "https://github.com/rhythmcache/payload-dumper-rust"
+keywords    = ["dumper", "android", "ota", "extractor", "payload"]
+categories  = ["command-line-utilities", "filesystem", "compression"]
 
-include = [
-    "src/**",
-    "LICENSE",
-    "README.md",
-    "Cargo.toml",
-    "build.rs"
-]
+include = ["src/**", "LICENSE", "README.md", "Cargo.toml", "build.rs"]
 
 [lib]
 name = "payload_dumper"
@@ -42,14 +32,29 @@ hex = "0.4.3"
 clap = { version = "4.5.53", features = ["derive"] }
 serde = { version = "1.0.228", features = ["derive"], optional = true }
 serde_json = { version = "1.0.145", optional = true }
-tokio = { version = "1.48.0", features = ["rt", "rt-multi-thread", "io-util", "time", "full"] }
+tokio = { version = "1.48.0", features = [
+    "rt",
+    "rt-multi-thread",
+    "io-util",
+    "time",
+    "full",
+] }
 futures = "0.3.31"
-async-compression = { version = "0.4.35", features = ["zstd", "xz", "bzip2", "tokio"] }
+async-compression = { version = "0.4.35", features = [
+    "zstd",
+    "xz",
+    "bzip2",
+    "tokio",
+] }
 async-trait = "0.1.89"
 tokio-util = { version = "0.7.17", features = ["io"], optional = true }
 url = "2.5.7"
-
-reqwest = { version = "0.12.25", features = ["rustls-tls-webpki-roots", "stream", "gzip", "http2"], default-features = false, optional = true }
+reqwest = { version = "0.12.25", features = [
+    "rustls-tls-webpki-roots",
+    "stream",
+    "gzip",
+    "http2",
+], default-features = false, optional = true }
 hickory-resolver = { version = "0.25.2", optional = true }
 tempfile = { version = "3.23.0", optional = true }
 ahash = "0.8.12"
@@ -58,20 +63,19 @@ ahash = "0.8.12"
 chrono = "0.4.42"
 
 [features]
-default = ["local_zip", "metadata", "remote_zip", "prefetch"]
-metadata = ["dep:serde", "dep:serde_json"]
-local_zip = []
-remote_zip = ["local_zip", "dep:reqwest", "dep:tokio-util"]
+default     = ["local_zip", "metadata", "remote_zip", "prefetch"]
+metadata    = ["dep:serde", "dep:serde_json"]
+local_zip   = []
+remote_zip  = ["local_zip", "dep:reqwest", "dep:tokio-util"]
 hickory_dns = ["remote_zip", "dep:hickory-resolver", "reqwest?/hickory-dns"]
-prefetch = ["remote_zip", "dep:tempfile"]
-
+prefetch    = ["remote_zip", "dep:tempfile"]
 
 [profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1
-panic = "abort"
-strip = true
-debug = false
-incremental = false
+opt-level       = 3
+lto             = "fat"
+codegen-units   = 1
+panic           = "abort"
+strip           = true
+debug           = false
+incremental     = false
 overflow-checks = false

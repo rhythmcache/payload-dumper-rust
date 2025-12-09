@@ -2,10 +2,10 @@
 // Copyright (c) 2025 rhythmcache
 // https://github.com/rhythmcache/payload-dumper-rust
 
-use crate::DeltaArchiveManifest;
 use crate::constants::{PAYLOAD_MAGIC, SUPPORTED_PAYLOAD_VERSION};
 #[cfg(feature = "remote_zip")]
 use crate::http::HttpReader;
+use crate::structs::DeltaArchiveManifest;
 #[cfg(feature = "local_zip")]
 use crate::zip::core_parser::ZipParser;
 #[cfg(feature = "local_zip")]

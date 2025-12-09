@@ -4,8 +4,8 @@
 
 use ahash::AHashSet as HashSet;
 use anyhow::{Result, anyhow};
-use payload_dumper::DeltaArchiveManifest;
 use payload_dumper::metadata::get_metadata;
+use payload_dumper::structs::DeltaArchiveManifest;
 use std::path::Path;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;

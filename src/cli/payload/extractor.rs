@@ -6,8 +6,8 @@ use crate::cli::args::args_def::Args;
 use crate::cli::ui::cli_reporter::CliExtractionReporter;
 use crate::cli::ui::ui_print::UiOutput;
 use anyhow::Result;
-use payload_dumper::PartitionUpdate;
 use payload_dumper::payload::payload_dumper::{AsyncPayloadRead, dump_partition};
+use payload_dumper::structs::PartitionUpdate;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 

@@ -11,8 +11,8 @@ use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
 
-pub use crate::PartitionUpdate;
-use crate::{InstallOperation, install_operation};
+pub use crate::structs::PartitionUpdate;
+use crate::structs::{InstallOperation, install_operation};
 
 const BUFREADER_SIZE: usize = 64 * 1024; // 64 KB for BufReader (decompression streams)
 const COPY_BUFFER_SIZE: usize = 128 * 1024; // 128 KB for direct copy operations

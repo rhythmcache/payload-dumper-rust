@@ -11,10 +11,7 @@ pub mod payload;
 #[cfg(feature = "prefetch")]
 pub mod prefetch;
 pub mod readers;
-#[cfg(feature = "metadata")]
 pub mod structs;
 pub mod utils;
 #[cfg(any(feature = "local_zip", feature = "remote_zip"))]
 pub mod zip;
-
-include!("proto/update_metadata.rs");

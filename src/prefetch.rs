@@ -9,10 +9,10 @@ use std::pin::Pin;
 use tokio::fs::File;
 use tokio::io::{AsyncRead, AsyncWriteExt};
 
-use crate::PartitionUpdate;
 use crate::http::HttpReader;
 use crate::payload::payload_dumper::{AsyncPayloadRead, PayloadReader, ProgressReporter};
 use crate::readers::local_reader::LocalAsyncPayloadReader;
+use crate::structs::PartitionUpdate;
 
 /// configuration for partition extraction
 #[derive(Debug, Clone)]

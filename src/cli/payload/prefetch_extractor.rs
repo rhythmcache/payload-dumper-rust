@@ -6,11 +6,11 @@ use crate::cli::args::args_def::Args;
 use crate::cli::ui::cli_reporter::{CliDownloadReporter, CliExtractionReporter};
 use crate::cli::ui::ui_print::UiOutput;
 use anyhow::Result;
-use payload_dumper::PartitionUpdate;
 use payload_dumper::http::HttpReader;
 use payload_dumper::prefetch::{
     ExtractionPaths, PartitionExtractionConfig, prefetch_and_dump_partition,
 };
+use payload_dumper::structs::PartitionUpdate;
 use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::sync::Semaphore;

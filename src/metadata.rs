@@ -2,9 +2,6 @@
 // Copyright (c) 2025 rhythmcache
 // https://github.com/rhythmcache/payload-dumper-rust
 
-use crate::DeltaArchiveManifest;
-use crate::cow_merge_operation;
-use crate::install_operation;
 use crate::structs::*;
 use crate::utils::format_size;
 use ahash::{AHashMap as HashMap, AHashSet as HashSet};

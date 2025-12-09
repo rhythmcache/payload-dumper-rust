@@ -3,8 +3,7 @@
 // https://github.com/rhythmcache/payload-dumper-rust
 
 use ahash::AHashSet as HashSet;
-use payload_dumper::DeltaArchiveManifest;
-use payload_dumper::PartitionUpdate;
+use payload_dumper::structs::{DeltaArchiveManifest, PartitionUpdate};
 
 /// filters partitions based on the images argument
 /// returns all partitions if images is empty, otherwise returns filtered list

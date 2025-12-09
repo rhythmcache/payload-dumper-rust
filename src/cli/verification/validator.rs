@@ -6,7 +6,7 @@ use crate::cli::args::args_def::Args;
 use crate::cli::ui::ui_print::UiOutput;
 use crate::cli::verification::verify::verify_partitions_hash;
 use anyhow::Result;
-use payload_dumper::PartitionUpdate;
+use payload_dumper::structs::PartitionUpdate;
 
 /// verifies partition hashes for successfully extracted partitions
 /// returns a list of partition names that failed verification
