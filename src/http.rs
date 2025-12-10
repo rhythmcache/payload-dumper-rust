@@ -9,8 +9,73 @@ use reqwest::{Client, header};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-// use std::sync::OnceLock;
-// static ACCEPT_RANGES_WARNING_SHOWN: OnceLock<()> = OnceLock::new();
+// global DNS resolver for hickory_dns feature
+#[cfg(feature = "hickory_dns")]
+use std::sync::{Arc, OnceLock};
+
+#[cfg(feature = "hickory_dns")]
+static GLOBAL_DNS_RESOLVER: OnceLock<
+    Arc<hickory_resolver::Resolver<hickory_resolver::name_server::TokioConnectionProvider>>,
+> = OnceLock::new();
+
+#[cfg(feature = "hickory_dns")]
+async fn get_or_init_dns_resolver()
+-> Result<Arc<hickory_resolver::Resolver<hickory_resolver::name_server::TokioConnectionProvider>>> {
+    use hickory_proto::xfer::Protocol;
+    use hickory_resolver::Resolver;
+    use hickory_resolver::config::*;
+    use hickory_resolver::name_server::TokioConnectionProvider;
+
+    if let Some(resolver) = GLOBAL_DNS_RESOLVER.get() {
+        return Ok(resolver.clone());
+    }
+
+    // check for custom DNS from environment variable
+    let config = if let Ok(custom_dns) = std::env::var("PAYLOAD_DUMPER_CUSTOM_DNS") {
+        // parse custom DNS servers (comma-separated, for example., "8.8.8.8,8.8.4.4")
+        let dns_ips: Result<Vec<_>> = custom_dns
+            .split(',')
+            .map(|s| s.trim().parse::<std::net::IpAddr>())
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| anyhow!("Invalid DNS IP in PAYLOAD_DUMPER_CUSTOM_DNS: {}", e));
+
+        let dns_ips = dns_ips?;
+
+        if dns_ips.is_empty() {
+            return Err(anyhow!("PAYLOAD_DUMPER_CUSTOM_DNS is empty"));
+        }
+
+        // Create config with custom DNS servers
+        let mut config = ResolverConfig::new();
+        for ip in dns_ips {
+            let socket_addr = std::net::SocketAddr::new(ip, 53);
+            config.add_name_server(NameServerConfig {
+                socket_addr,
+                protocol: Protocol::Udp,
+                tls_dns_name: None,
+                http_endpoint: None,
+                trust_negative_responses: true,
+                bind_addr: None,
+            });
+        }
+        config
+    } else {
+        // use Cloudflare DNS by default
+        ResolverConfig::cloudflare()
+    };
+
+    // build resolver in spawn_blocking to avoid blocking async runtime
+    let resolver = tokio::task::spawn_blocking(move || {
+        Resolver::builder_with_config(config, TokioConnectionProvider::default()).build()
+    })
+    .await
+    .map_err(|e| anyhow!("Failed to spawn resolver task: {}", e))?;
+
+    let resolver = Arc::new(resolver);
+
+    // try to initialize, but use existing if another task beat us to it
+    Ok(GLOBAL_DNS_RESOLVER.get_or_init(|| resolver.clone()).clone())
+}
 
 /// HTTP client
 async fn create_http_client(user_agent: Option<&str>) -> Result<Client> {
@@ -51,34 +116,12 @@ async fn create_http_client(user_agent: Option<&str>) -> Result<Client> {
     // use custom DNS resolver when feature is enabled
     #[cfg(feature = "hickory_dns")]
     {
-        use hickory_resolver::Resolver;
-        use hickory_resolver::config::*;
         use hickory_resolver::name_server::TokioConnectionProvider;
         use reqwest::dns::{Name, Resolve, Resolving};
         use std::net::SocketAddr;
-        use std::sync::Arc;
 
         struct CustomDnsResolver {
-            resolver: Arc<Resolver<TokioConnectionProvider>>,
-        }
-
-        impl CustomDnsResolver {
-            async fn new() -> Result<Self> {
-                // Use Cloudflare's DNS (1.1.1.1 and 1.0.0.1)
-                let config = ResolverConfig::cloudflare();
-
-                // Build resolver in a spawn_blocking to avoid blocking async runtime
-                let resolver = tokio::task::spawn_blocking(move || {
-                    Resolver::builder_with_config(config, TokioConnectionProvider::default())
-                        .build()
-                })
-                .await
-                .map_err(|e| anyhow!("Failed to spawn resolver task: {}", e))?;
-
-                Ok(Self {
-                    resolver: Arc::new(resolver),
-                })
-            }
+            resolver: Arc<hickory_resolver::Resolver<TokioConnectionProvider>>,
         }
 
         impl Resolve for CustomDnsResolver {
@@ -99,11 +142,11 @@ async fn create_http_client(user_agent: Option<&str>) -> Result<Client> {
             }
         }
 
-        let dns_resolver = CustomDnsResolver::new()
+        let resolver = get_or_init_dns_resolver()
             .await
             .map_err(|e| anyhow!("Failed to create DNS resolver: {}", e))?;
 
-        client_builder = client_builder.dns_resolver(Arc::new(dns_resolver));
+        client_builder = client_builder.dns_resolver(Arc::new(CustomDnsResolver { resolver }));
     }
 
     client_builder
