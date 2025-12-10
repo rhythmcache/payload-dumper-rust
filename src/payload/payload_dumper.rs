@@ -234,13 +234,13 @@ async fn process_operation_streaming(
 /// * `output_path` -> where to write the partition image
 /// * `payload_reader` -> reader for the payload data
 /// * `reporter` -> progress reporter implementation
-pub async fn dump_partition<P: AsyncPayloadRead, R: ProgressReporter>(
+pub async fn dump_partition<P: AsyncPayloadRead>(
     partition: &PartitionUpdate,
     data_offset: u64,
     block_size: u64,
     output_path: std::path::PathBuf,
     payload_reader: &P,
-    reporter: &R,
+    reporter: &dyn ProgressReporter,
 ) -> Result<()> {
     let partition_name = &partition.partition_name;
     let total_ops = partition.operations.len() as u64;
