@@ -64,12 +64,8 @@ async fn get_or_init_dns_resolver()
         ResolverConfig::cloudflare()
     };
 
-    // build resolver in spawn_blocking to avoid blocking async runtime
-    let resolver = tokio::task::spawn_blocking(move || {
-        Resolver::builder_with_config(config, TokioConnectionProvider::default()).build()
-    })
-    .await
-    .map_err(|e| anyhow!("Failed to spawn resolver task: {}", e))?;
+    let resolver =
+        Resolver::builder_with_config(config, TokioConnectionProvider::default()).build();
 
     let resolver = Arc::new(resolver);
 
