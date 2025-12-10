@@ -15,3 +15,7 @@ pub mod structs;
 pub mod utils;
 #[cfg(any(feature = "local_zip", feature = "remote_zip"))]
 pub mod zip;
+pub mod extractor;
+#[cfg(feature = "capi")]
+pub mod capi;
+
