@@ -117,7 +117,7 @@ pub fn list_partitions<P: AsRef<Path>>(payload_path: P) -> Result<String> {
             total_partitions: partitions.len(),
             total_operations: metadata.total_operations_count,
             total_size_bytes: partitions.iter().map(|p| p.size_bytes).sum(),
-            total_size_readable: payload_dumper::utils::format_size(
+            total_size_readable: crate::utils::format_size(
                 partitions.iter().map(|p| p.size_bytes).sum(),
             ),
             partitions,
@@ -167,7 +167,7 @@ pub fn list_partitions_zip<P: AsRef<Path>>(zip_path: P) -> Result<String> {
             total_partitions: partitions.len(),
             total_operations: metadata.total_operations_count,
             total_size_bytes: partitions.iter().map(|p| p.size_bytes).sum(),
-            total_size_readable: payload_dumper::utils::format_size(
+            total_size_readable: crate::utils::format_size(
                 partitions.iter().map(|p| p.size_bytes).sum(),
             ),
             partitions,
@@ -346,7 +346,7 @@ where
         let reporter: Box<dyn ProgressReporter> = if let Some(callback) = progress_callback {
             Box::new(CallbackProgressReporter::new(callback))
         } else {
-            Box::new(payload_dumper::payload::payload_dumper::NoOpReporter)
+            Box::new(crate::payload::payload_dumper::NoOpReporter)
         };
 
         dump_partition(
@@ -422,7 +422,7 @@ where
         let reporter: Box<dyn ProgressReporter> = if let Some(callback) = progress_callback {
             Box::new(CallbackProgressReporter::new(callback))
         } else {
-            Box::new(payload_dumper::payload::payload_dumper::NoOpReporter)
+            Box::new(crate::payload::payload_dumper::NoOpReporter)
         };
 
         dump_partition(
