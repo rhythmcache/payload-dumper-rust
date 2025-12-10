@@ -8,6 +8,7 @@ use async_compression::tokio::bufread::{BzDecoder, XzDecoder, ZstdDecoder};
 use async_trait::async_trait;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::fs::File;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
 
@@ -32,6 +33,12 @@ pub trait ProgressReporter: Send + Sync {
 
     /// called when a non-fatal warning occurs (operation skipped, etc.)
     fn on_warning(&self, partition_name: &str, operation_index: usize, message: String);
+
+    /// check if cancellation has been requested
+    /// return true if extraction should be cancelled
+    fn is_cancelled(&self) -> bool {
+        false // default implementation for backwards compatibility
+    }
 }
 
 /// no-op reporter for headless/library use
@@ -274,6 +281,11 @@ pub async fn dump_partition<P: AsyncPayloadRead>(
     };
 
     for (i, op) in partition.operations.iter().enumerate() {
+        // Check for cancellation before processing each operation
+        if reporter.is_cancelled() {
+            return Err(anyhow!("Extraction cancelled by user"));
+        }
+
         process_operation_streaming(i, op, &mut ctx, reporter, partition_name).await?;
         reporter.on_progress(partition_name, (i + 1) as u64, total_ops);
     }
