@@ -85,6 +85,15 @@ hickory_dns = [
 prefetch = ["remote_zip", "dep:tempfile"]
 capi = []
 
+[package.metadata.capi.header]
+name = "payload_dumper"
+
+[package.metadata.capi.pkg_config]
+name = "payload_dumper"
+
+[package.metadata.capi.library]
+name = "payload_dumper"
+
 [profile.release]
 opt-level       = 3
 lto             = "fat"
