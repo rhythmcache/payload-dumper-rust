@@ -83,6 +83,7 @@ hickory_dns = [
     "reqwest?/hickory-dns",
 ]
 prefetch = ["remote_zip", "dep:tempfile"]
+capi = []
 
 [profile.release]
 opt-level       = 3
