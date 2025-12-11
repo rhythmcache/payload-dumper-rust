@@ -355,7 +355,7 @@ pub extern "C" fn payload_extract_partition(
 
             Some(Box::new(move |progress| wrapper.call(progress)) as ProgressCallback)
         };
-      
+
         match extract_partition(payload_str, partition_str, output_str, progress_cb) {
             Ok(()) => 0,
             Err(e) => {
@@ -487,10 +487,9 @@ pub extern "C" fn payload_extract_partition_zip(
 /// get library version
 /// returns a static string, do not free
 #[unsafe(no_mangle)]
-pub extern "C" fn payload_get_version() -> *const std::os::raw::c_char {
-    static VERSION: &str = env!("CARGO_PKG_VERSION");
+pub extern "C" fn payload_get_version() -> *const c_char {
     static C_VERSION: &[u8] = concat!(env!("CARGO_PKG_VERSION"), "\0").as_bytes();
-    C_VERSION.as_ptr() as *const std::os::raw::c_char
+    C_VERSION.as_ptr() as *const c_char
 }
 
 /// initialize the library (optional, but recommended for thread safety)
@@ -498,7 +497,7 @@ pub extern "C" fn payload_get_version() -> *const std::os::raw::c_char {
 /// @return 0 on success, -1 on failure
 #[unsafe(no_mangle)]
 pub extern "C" fn payload_init() -> i32 {
-    // not yet implemented idk 
+    // not yet implemented idk
     0
 }
 
