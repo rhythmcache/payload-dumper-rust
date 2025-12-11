@@ -3,18 +3,17 @@
 // https://github.com/rhythmcache/payload-dumper-rust
 
 //! high-level API for payload dumper operations
-use anyhow::{Result, anyhow};
-use once_cell::sync::Lazy;
 use crate::metadata::get_metadata;
 use crate::payload::payload_dumper::{ProgressReporter, dump_partition};
 use crate::payload::payload_parser::{parse_local_payload, parse_local_zip_payload};
 use crate::readers::local_reader::LocalAsyncPayloadReader;
 use crate::readers::local_zip_reader::LocalAsyncZipPayloadReader;
+use anyhow::{Result, anyhow};
+use once_cell::sync::Lazy;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::runtime::Runtime;
-
 
 /* Global Shared Runtime */
 
@@ -23,7 +22,7 @@ use tokio::runtime::Runtime;
 /// uses multi-threaded runtime to support concurrent block_on() calls
 /// from multiple threads. The caller is responsible for limiting parallelization
 /// (e.g spawning only N threads for N partitions).
-static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
+pub static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(num_cpus::get().max(2)) // use CPU count, minimum 2
         .enable_all()
@@ -180,13 +179,13 @@ pub fn list_partitions_zip<P: AsRef<Path>>(zip_path: P) -> Result<String> {
 
 /* Extract Partition */
 
-struct CallbackProgressReporter {
+pub struct CallbackProgressReporter {
     callback: Arc<ProgressCallback>,
     cancelled: Arc<AtomicBool>,
 }
 
 impl CallbackProgressReporter {
-    fn new(callback: ProgressCallback) -> Self {
+    pub fn new(callback: ProgressCallback) -> Self {
         Self {
             callback: Arc::new(callback),
             cancelled: Arc::new(AtomicBool::new(false)),
