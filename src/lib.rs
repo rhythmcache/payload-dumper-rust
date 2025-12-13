@@ -8,8 +8,6 @@ pub mod constants;
 pub mod extractor;
 #[cfg(feature = "remote_zip")]
 pub mod http;
-#[cfg(feature = "jni")]
-pub mod jni;
 #[cfg(feature = "metadata")]
 pub mod metadata;
 pub mod payload;
