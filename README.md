@@ -2,9 +2,6 @@
 
 A fast and efficient Android OTA payload dumper.
 
-[![AI Docs](https://img.shields.io/badge/AI_Written-Documentation-lightgrey?style=flat-square&logo=ai)](https://github.com/rhythmcache/LLM-Badges)
-
-[![AI Enhanced](https://img.shields.io/badge/AI_Enhanced-Yes-teal?style=flat-square&logo=ai)](https://github.com/rhythmcache/LLM-Badges)
 
 ## What it does
 
