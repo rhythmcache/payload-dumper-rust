@@ -76,6 +76,8 @@ pub struct PayloadSummary {
     pub total_operations: usize,
     pub total_size_bytes: u64,
     pub total_size_readable: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub security_patch_level: Option<String>,
 }
 
 /* List Partitions (Payload.bin) */
@@ -120,6 +122,7 @@ pub fn list_partitions<P: AsRef<Path>>(payload_path: P) -> Result<String> {
                 partitions.iter().map(|p| p.size_bytes).sum(),
             ),
             partitions,
+            security_patch_level: metadata.security_patch_level.clone(),
         };
 
         serde_json::to_string_pretty(&summary)
@@ -170,6 +173,7 @@ pub fn list_partitions_zip<P: AsRef<Path>>(zip_path: P) -> Result<String> {
                 partitions.iter().map(|p| p.size_bytes).sum(),
             ),
             partitions,
+            security_patch_level: metadata.security_patch_level.clone(),
         };
 
         serde_json::to_string_pretty(&summary)

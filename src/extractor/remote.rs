@@ -74,6 +74,7 @@ pub fn list_partitions_remote_zip(
                 partitions.iter().map(|p| p.size_bytes).sum(),
             ),
             partitions,
+            security_patch_level: metadata.security_patch_level.clone(),
         };
 
         let json = serde_json::to_string_pretty(&summary)
@@ -138,6 +139,7 @@ pub fn list_partitions_remote_bin(
                 partitions.iter().map(|p| p.size_bytes).sum(),
             ),
             partitions,
+            security_patch_level: metadata.security_patch_level.clone(),
         };
 
         let json = serde_json::to_string_pretty(&summary)
