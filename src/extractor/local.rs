@@ -5,8 +5,11 @@
 //! high-level API for payload dumper operations
 use crate::metadata::get_metadata;
 use crate::payload::payload_dumper::{ProgressReporter, dump_partition};
-use crate::payload::payload_parser::{parse_local_payload, parse_local_zip_payload};
+use crate::payload::payload_parser::parse_local_payload;
+#[cfg(feature = "remote_zip")]
+use crate::payload::payload_parser::parse_local_zip_payload;
 use crate::readers::local_reader::LocalAsyncPayloadReader;
+#[cfg(feature = "remote_zip")]
 use crate::readers::local_zip_reader::LocalAsyncZipPayloadReader;
 use anyhow::{Result, anyhow};
 use once_cell::sync::Lazy;
@@ -137,6 +140,7 @@ pub fn list_partitions<P: AsRef<Path>>(payload_path: P) -> Result<String> {
 /// # Panics
 /// panics if called from within an async runtime context. this is a blocking
 /// function and must be called from a synchronous context.
+#[cfg(feature = "remote_zip")]
 pub fn list_partitions_zip<P: AsRef<Path>>(zip_path: P) -> Result<String> {
     // check if we're already inside a tokio runtime
     if tokio::runtime::Handle::try_current().is_ok() {
@@ -386,6 +390,7 @@ where
 /// # Panics
 /// panics if called from within an async runtime context (e.g. inside a tokio task).
 /// this is a blocking function and must be called from a synchronous context only.
+#[cfg(feature = "remote_zip")]
 pub fn extract_partition_zip<P1, P2>(
     zip_path: P1,
     partition_name: &str,

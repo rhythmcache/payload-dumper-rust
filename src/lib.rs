@@ -8,7 +8,6 @@ pub mod constants;
 pub mod extractor;
 #[cfg(feature = "remote_zip")]
 pub mod http;
-#[cfg(feature = "metadata")]
 pub mod metadata;
 pub mod payload;
 #[cfg(feature = "prefetch")]

@@ -50,10 +50,15 @@ async fn read_remote_magic_bytes(
 /// detects the payload file type (local/remote, zip/bin)
 pub async fn detect_payload_type(
     payload_path: &Path,
-    #[cfg(feature = "remote_zip")] user_agent: Option<&str>,
-    #[cfg(feature = "remote_zip")] cookies: Option<&str>,
-    #[cfg(not(feature = "remote_zip"))] _user_agent: Option<&str>,
+    user_agent: Option<&str>,
+    cookies: Option<&str>,
 ) -> Result<PayloadType> {
+    #[cfg(not(feature = "remote_zip"))]
+    {
+        let _ = user_agent;
+        let _ = cookies;
+    }
+
     let payload_path_str = payload_path.to_string_lossy().to_string();
     let is_url =
         payload_path_str.starts_with("http://") || payload_path_str.starts_with("https://");

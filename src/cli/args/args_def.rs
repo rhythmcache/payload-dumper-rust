@@ -127,19 +127,18 @@ pub struct Args {
     pub list: bool,
 
     #[arg(
-        short = 'm',
-        long,
-        value_name = "MODE",
-        num_args = 0..=1,
-        default_missing_value = "compact",
-        require_equals = true,
-        help = "Save metadata as JSON. Use '--metadata=full' for detailed info including all operations",
-        long_help = "Save metadata as JSON:\n  \
-                     --metadata        Compact mode (default, ~100KB)\n  \
-                     --metadata=full   Full mode with all operation details (may be large)\n  \
-                     Can be combined with --images to export metadata for specific partitions only",
-        hide = cfg!(not(feature = "metadata"))
-    )]
+    short = 'm',
+    long,
+    value_name = "MODE",
+    num_args = 0..=1,
+    default_missing_value = "compact",
+    require_equals = true,
+    help = "Save metadata as JSON. Use '--metadata=full' for detailed info including all operations",
+    long_help = "Save metadata as JSON:\n  \
+                 --metadata        Compact mode (default, ~100KB)\n  \
+                 --metadata=full   Full mode with all operation details (may be large)\n  \
+                 Can be combined with --images to export metadata for specific partitions only",
+)]
     pub metadata: Option<String>,
 
     #[arg(short = 'P', long, help = "Disable parallel extraction")]

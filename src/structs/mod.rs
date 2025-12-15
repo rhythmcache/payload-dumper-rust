@@ -1,9 +1,4 @@
-pub mod proto;
-
-#[cfg(feature = "metadata")]
 pub mod manual;
-
-pub use proto::*;
-
-#[cfg(feature = "metadata")]
+pub mod proto;
 pub use manual::*;
+pub use proto::*;

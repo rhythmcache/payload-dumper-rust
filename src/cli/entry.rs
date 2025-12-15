@@ -9,7 +9,6 @@ use tokio::fs;
 
 use crate::cli::args::args_def::Args;
 use crate::cli::commands::list::list_partitions;
-#[cfg(feature = "metadata")]
 use crate::cli::commands::metadata_saver::handle_metadata_extraction;
 use crate::cli::payload::extractor::extract_partitions;
 use crate::cli::payload::file_detector::{PayloadType, detect_payload_type};
@@ -85,8 +84,6 @@ pub async fn run() -> Result<()> {
         ui.pb_eprintln(format!("- Security Patch: {}", security_patch));
     }
 
-    // Handle metadata extraction (early exit)
-    #[cfg(feature = "metadata")]
     if let Some(mode) = &args.metadata
         && !args.list
     {
@@ -117,7 +114,6 @@ pub async fn run() -> Result<()> {
         ui.clear()?;
 
         // Save metadata if requested in list mode
-        #[cfg(feature = "metadata")]
         if let Some(mode) = &args.metadata {
             if let Err(e) = handle_metadata_extraction(
                 &manifest,
