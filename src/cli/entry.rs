@@ -59,7 +59,12 @@ pub async fn run() -> Result<()> {
     // Detect file type
     ui.update_spinner(&main_pb, "Detecting file type...");
 
-    let payload_type = detect_payload_type(&args.payload_path, args.user_agent.as_deref()).await?;
+    let payload_type = detect_payload_type(
+        &args.payload_path,
+        args.user_agent.as_deref(),
+        args.cookies.as_deref(),
+    )
+    .await?;
 
     // Load payload
     ui.update_spinner(&main_pb, "Parsing payload...");
@@ -68,6 +73,7 @@ pub async fn run() -> Result<()> {
         &args.payload_path,
         payload_type,
         args.user_agent.as_deref(),
+        args.cookies.as_deref(),
         &ui,
     )
     .await?;
@@ -173,6 +179,7 @@ pub async fn run() -> Result<()> {
                     let http_reader = payload_dumper::http::HttpReader::new(
                         url.clone(),
                         args.user_agent.as_deref(),
+                        args.cookies.as_deref(),
                     )
                     .await?;
                     let entry = ZipParser::find_payload_entry(&http_reader).await?;

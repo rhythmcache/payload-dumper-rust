@@ -26,11 +26,15 @@ async fn read_local_magic_bytes(path: &Path) -> Result<[u8; 4]> {
 
 /// reads magic bytes from a remote URL
 #[cfg(feature = "remote_zip")]
-async fn read_remote_magic_bytes(url: &str, user_agent: Option<&str>) -> Result<[u8; 4]> {
+async fn read_remote_magic_bytes(
+    url: &str,
+    user_agent: Option<&str>,
+    cookies: Option<&str>,
+) -> Result<[u8; 4]> {
     use anyhow::Context;
     use payload_dumper::http::HttpReader;
 
-    let http_reader = HttpReader::new(url.to_string(), user_agent)
+    let http_reader = HttpReader::new(url.to_string(), user_agent, cookies)
         .await
         .context("Failed to initialize HTTP reader")?;
 
@@ -47,6 +51,7 @@ async fn read_remote_magic_bytes(url: &str, user_agent: Option<&str>) -> Result<
 pub async fn detect_payload_type(
     payload_path: &Path,
     #[cfg(feature = "remote_zip")] user_agent: Option<&str>,
+    #[cfg(feature = "remote_zip")] cookies: Option<&str>,
     #[cfg(not(feature = "remote_zip"))] _user_agent: Option<&str>,
 ) -> Result<PayloadType> {
     let payload_path_str = payload_path.to_string_lossy().to_string();
@@ -88,7 +93,7 @@ pub async fn detect_payload_type(
     if is_url && extension.is_empty() {
         #[cfg(feature = "remote_zip")]
         {
-            let magic = read_remote_magic_bytes(&payload_path_str, user_agent).await?;
+            let magic = read_remote_magic_bytes(&payload_path_str, user_agent, cookies).await?;
             match detect_file(&magic) {
                 Ok(FileType::Zip) => {
                     is_zip = true;

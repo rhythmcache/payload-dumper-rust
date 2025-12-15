@@ -89,6 +89,18 @@ pub struct Args {
     pub user_agent: Option<String>,
 
     #[arg(
+        short = 'C',
+    long,
+    help = if cfg!(feature = "remote_zip") {
+        "Custom HTTP Cookie header value for remote requests (e.g. \"key1=value1; key2=value2\")"
+    } else {
+        "Custom HTTP Cookie header value [requires remote_zip feature]"
+    },
+    hide = cfg!(not(feature = "remote_zip"))
+)]
+    pub cookies: Option<String>,
+
+    #[arg(
         short = 'i',
         long,
         default_value = "",
