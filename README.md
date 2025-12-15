@@ -243,6 +243,8 @@ These modules expose structured, async-safe APIs suitable for embedding
 
 For API documentation and function behavior, refer directly to the headers.
 
+You can regenerate C/C++ headers using **[cargo-c](https://github.com/lu-zero/cargo-c.git)** or **[cbindgen](https://github.com/mozilla/cbindgen.git)**.
+
 
 ## Troubleshooting
 
