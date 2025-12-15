@@ -113,6 +113,7 @@ Arguments:
 Options:
   -o, --out <OUT>              Output directory [default: output]
   -U, --user-agent <AGENT>     Custom User-Agent for HTTP requests
+  -C, --cookies <COOKIES>      Custom HTTP Cookie header value for remote requests
   -i, --images <IMAGES>        Comma-separated partition names to extract
   -t, --threads <THREADS>      Number of threads for parallel processing
   -l, --list                   List available partitions
@@ -120,6 +121,7 @@ Options:
   -P, --no-parallel            Disable parallel extraction
   -n, --no-verify              Skip hash verification
       --prefetch               Download all data first (for remote URLs)
+  -q, --quiet                  Suppress all non-essential output (errors will still be shown)
   -h, --help                   Show help
   -V, --version                Show version
 ```
@@ -132,6 +134,115 @@ Useful for:
 - Quick partition extraction without full downloads
 - CI/CD pipelines
 - Bandwidth-limited connections
+
+## Build
+
+To build manually, you will need:
+- [Rust compiler and Cargo](https://rust-lang.org/tools/install/)
+- Basic command-line knowledge
+- A bit of patience
+
+### 1. Clone the repository
+```bash
+git clone --depth 1 https://github.com/rhythmcache/payload-dumper-rust.git
+cd payload-dumper-rust
+```
+
+### 2. Default build (recommended for most users)
+```bash
+cargo build --release
+```
+
+This builds the binary with:
+- Local `.bin` and `.zip` support
+- Remote HTTP/HTTPS support
+- Prefetch mode
+- Metadata support
+
+---
+
+## Feature-based builds
+
+Payload Dumper is modular. You can disable features you do not need to:
+- Reduce compile time
+- Reduce binary size
+- Avoid unnecessary dependencies
+
+### Local files only (fastest build, smallest binary)
+If you only need local payload files and no network support:
+
+```bash
+cargo build --release --no-default-features
+```
+
+This:
+- Disables all HTTP/network code
+- Removes `reqwest`, DNS, and TLS dependencies
+- Compiles much faster
+- Produces a significantly smaller binary
+
+---
+
+### Enable remote (HTTP/HTTPS) support
+To work with remote URLs:
+
+```bash
+cargo build --release --features remote_zip
+```
+
+---
+
+### Static binaries and DNS notes
+
+When building a fully static binary (for example with `musl`), DNS resolution may fail
+because system libc DNS resolvers are unavailable.
+
+#### Use the built-in DNS resolver
+```bash
+cargo build --release --features hickory_dns
+```
+
+This enables:
+- Built-in DNS resolution via `hickory-resolver`
+- No dependency on system libc DNS
+- Reliable behavior in fully static environments
+
+By default, the resolver uses **Cloudflare DNS (1.1.1.1)**.
+
+#### Override DNS server at runtime
+The DNS server is selected **at runtime**
+
+To use a custom DNS server, set the environment variable **when running the binary**:
+```bash
+export PAYLOAD_DUMPER_CUSTOM_DNS=8.8.8.8,4.4.4.4
+./payload_dumper
+```
+---
+If you are unsure, use the default build. 
+
+
+## Library usage
+
+It also provides a few high level apis.
+
+### Rust API
+
+See
+ - [src/extractor/local.rs](./src/extractor/local.rs)  
+ - [src/extractor/remote.rs](./src/extractor/remote.rs)
+
+These modules expose structured, async-safe APIs suitable for embedding
+`payload-dumper` into other Rust applications.
+
+### C / C++ API convenience wrappers
+
+- C API header:  
+  [include/payload_dumper.h](./include/payload_dumper.h)
+- C++ wrapper header:  
+  [include/payload_dumper.hpp](./include/payload_dumper.hpp)
+
+For API documentation and function behavior, refer directly to the headers.
+
 
 ## Troubleshooting
 
