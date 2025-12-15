@@ -225,14 +225,17 @@ If you are unsure, use the default build.
 
 It also provides a few high level apis.
 
+project using this library:
+- **payload-dumper-gui**  
+  https://github.com/rhythmcache/payload-dumper-gui.git 
+
+
 ### Rust API
 
 See
  - [src/extractor/local.rs](./src/extractor/local.rs)  
  - [src/extractor/remote.rs](./src/extractor/remote.rs)
 
-These modules expose structured, async-safe APIs suitable for embedding
-`payload-dumper` into other Rust applications.
 
 ### C / C++ API convenience wrappers
 

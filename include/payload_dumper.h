@@ -1,7 +1,7 @@
 
 #define PAYLOAD_DUMPER_MAJOR 0
 #define PAYLOAD_DUMPER_MINOR 8
-#define PAYLOAD_DUMPER_PATCH 0
+#define PAYLOAD_DUMPER_PATCH 1
 
 #include <stdarg.h>
 #include <stdbool.h>
