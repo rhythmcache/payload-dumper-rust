@@ -39,6 +39,7 @@ pub struct RemotePartitionList {
 pub fn list_partitions_remote_zip(
     url: String,
     user_agent: Option<&str>,
+    cookies: Option<&str>,
 ) -> Result<RemotePartitionList> {
     // check if we're already inside a tokio runtime
     if tokio::runtime::Handle::try_current().is_ok() {
@@ -48,7 +49,8 @@ pub fn list_partitions_remote_zip(
     }
 
     RUNTIME.block_on(async {
-        let (manifest, data_offset, content_length) = parse_remote_payload(url, user_agent).await?;
+        let (manifest, data_offset, content_length) =
+            parse_remote_payload(url, user_agent, cookies).await?;
 
         // use get_metadata with full_mode=false for basic info
         let metadata = get_metadata(&manifest, data_offset, false, None).await?;
@@ -103,6 +105,7 @@ pub fn list_partitions_remote_zip(
 pub fn list_partitions_remote_bin(
     url: String,
     user_agent: Option<&str>,
+    cookies: Option<&str>,
 ) -> Result<RemotePartitionList> {
     // check if we're already inside a tokio runtime
     if tokio::runtime::Handle::try_current().is_ok() {
@@ -113,7 +116,7 @@ pub fn list_partitions_remote_bin(
 
     RUNTIME.block_on(async {
         let (manifest, data_offset, content_length) =
-            parse_remote_bin_payload(url, user_agent).await?;
+            parse_remote_bin_payload(url, user_agent, cookies).await?;
 
         // use get_metadata with full_mode=false for basic info
         let metadata = get_metadata(&manifest, data_offset, false, None).await?;
@@ -211,6 +214,7 @@ pub fn extract_partition_remote_zip<P: AsRef<Path>>(
     partition_name: &str,
     output_path: P,
     user_agent: Option<&str>,
+    cookies: Option<&str>,
     progress_callback: Option<ProgressCallback>,
 ) -> Result<()> {
     // check if we're already inside a tokio runtime
@@ -222,7 +226,7 @@ pub fn extract_partition_remote_zip<P: AsRef<Path>>(
 
     RUNTIME.block_on(async {
         let (manifest, data_offset, _content_length) =
-            parse_remote_payload(url.clone(), user_agent).await?;
+            parse_remote_payload(url.clone(), user_agent, cookies).await?;
 
         let partition = manifest
             .partitions
@@ -236,7 +240,7 @@ pub fn extract_partition_remote_zip<P: AsRef<Path>>(
             tokio::fs::create_dir_all(parent).await?;
         }
 
-        let payload_reader = RemoteAsyncZipPayloadReader::new(url, user_agent).await?;
+        let payload_reader = RemoteAsyncZipPayloadReader::new(url, user_agent, cookies).await?;
 
         let reporter: Box<dyn ProgressReporter> = if let Some(callback) = progress_callback {
             Box::new(crate::extractor::local::CallbackProgressReporter::new(
@@ -292,6 +296,7 @@ pub fn extract_partition_remote_bin<P: AsRef<Path>>(
     partition_name: &str,
     output_path: P,
     user_agent: Option<&str>,
+    cookies: Option<&str>,
     progress_callback: Option<ProgressCallback>,
 ) -> Result<()> {
     // check if we're already inside a tokio runtime
@@ -303,7 +308,7 @@ pub fn extract_partition_remote_bin<P: AsRef<Path>>(
 
     RUNTIME.block_on(async {
         let (manifest, data_offset, _content_length) =
-            parse_remote_bin_payload(url.clone(), user_agent).await?;
+            parse_remote_bin_payload(url.clone(), user_agent, cookies).await?;
 
         let partition = manifest
             .partitions
@@ -317,7 +322,7 @@ pub fn extract_partition_remote_bin<P: AsRef<Path>>(
             tokio::fs::create_dir_all(parent).await?;
         }
 
-        let payload_reader = RemoteAsyncBinPayloadReader::new(url, user_agent).await?;
+        let payload_reader = RemoteAsyncBinPayloadReader::new(url, user_agent, cookies).await?;
 
         let reporter: Box<dyn ProgressReporter> = if let Some(callback) = progress_callback {
             Box::new(crate::extractor::local::CallbackProgressReporter::new(

@@ -74,7 +74,7 @@ async fn get_or_init_dns_resolver()
 }
 
 /// HTTP client
-async fn create_http_client(user_agent: Option<&str>) -> Result<Client> {
+async fn create_http_client(user_agent: Option<&str>, cookies: Option<&str>) -> Result<Client> {
     let mut headers = header::HeaderMap::new();
 
     let ua = user_agent.unwrap_or(DEFAULT_USER_AGENT);
@@ -83,6 +83,16 @@ async fn create_http_client(user_agent: Option<&str>) -> Result<Client> {
         header::HeaderValue::from_str(ua)
             .map_err(|e| anyhow!("Invalid user agent string: {}", e))?,
     );
+
+    if let Some(cookie_str) = cookies {
+        if !cookie_str.is_empty() {
+            headers.insert(
+                header::COOKIE,
+                header::HeaderValue::from_str(cookie_str)
+                    .map_err(|e| anyhow!("Invalid cookie string: {}", e))?,
+            );
+        }
+    }
 
     headers.insert(
         header::ACCEPT_ENCODING,
@@ -158,8 +168,8 @@ pub struct HttpReader {
 }
 
 impl HttpReader {
-    pub async fn new(url: String, user_agent: Option<&str>) -> Result<Self> {
-        let client = create_http_client(user_agent).await?;
+    pub async fn new(url: String, user_agent: Option<&str>, cookies: Option<&str>) -> Result<Self> {
+        let client = create_http_client(user_agent, cookies).await?;
 
         // validate URL
         url::Url::parse(&url).map_err(|e| anyhow!("Invalid URL: {}", e))?;

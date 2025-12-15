@@ -68,9 +68,10 @@ where
 pub async fn parse_remote_payload(
     url: String,
     user_agent: Option<&str>,
+    cookies: Option<&str>,
 ) -> Result<(DeltaArchiveManifest, u64, u64)> {
     // Added u64 for content_length
-    let http_reader = HttpReader::new(url, user_agent).await?;
+    let http_reader = HttpReader::new(url, user_agent, cookies).await?;
 
     // Get the content length to return
     let content_length = http_reader.content_length;
@@ -250,10 +251,11 @@ pub async fn parse_local_zip_payload(zip_path: PathBuf) -> Result<(DeltaArchiveM
 pub async fn parse_remote_bin_payload(
     url: String,
     user_agent: Option<&str>,
+    cookies: Option<&str>,
 ) -> Result<(DeltaArchiveManifest, u64, u64)> {
     #[cfg(feature = "remote_zip")]
     {
-        let http_reader = HttpReader::new(url, user_agent).await?;
+        let http_reader = HttpReader::new(url, user_agent, cookies).await?;
         let content_length = http_reader.content_length;
 
         let mut pos = 0u64;

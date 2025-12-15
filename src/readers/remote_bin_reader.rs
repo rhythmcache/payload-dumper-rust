@@ -23,8 +23,8 @@ pub struct RemoteAsyncBinPayloadReader {
 }
 
 impl RemoteAsyncBinPayloadReader {
-    pub async fn new(url: String, user_agent: Option<&str>) -> Result<Self> {
-        let http_reader = HttpReader::new(url, user_agent).await?;
+    pub async fn new(url: String, user_agent: Option<&str>, cookies: Option<&str>) -> Result<Self> {
+        let http_reader = HttpReader::new(url, user_agent, cookies).await?;
 
         Ok(Self {
             http_reader: Arc::new(http_reader),
