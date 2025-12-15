@@ -3,7 +3,7 @@ name        = "payload_dumper"
 version     = "0.8.1"
 edition     = "2024"
 authors     = ["rhythmcache"]
-description = "A fast and efficient Android OTA payload dumper"
+description = "A fast and efficient Android OTA payload dumper library and CLI"
 repository  = "https://github.com/rhythmcache/payload-dumper-rust"
 readme      = "README.md"
 license     = "Apache-2.0"
@@ -13,6 +13,7 @@ categories  = ["command-line-utilities", "filesystem", "compression"]
 
 include = [
     "src/**",
+    "include/**",
     "proto/update_metadata.proto",
     "LICENSE",
     "README.md",
