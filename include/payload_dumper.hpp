@@ -63,7 +63,8 @@ void payload_free_string(char* s);
 ///   "total_partitions": 10,
 ///   "total_operations": 1000,
 ///   "total_size_bytes": 5000000000,
-///   "total_size_readable": "4.66 GB"
+///   "total_size_readable": "4.66 GB",
+///   "security_patch_level": "2025-12-05" // optional, present only if available in payload
 /// }
 char* payload_list_partitions(const char* payload_path);
 
@@ -80,13 +81,17 @@ char* payload_list_partitions_zip(const char* zip_path);
 ///
 /// @param url URL to the remote ZIP file
 /// @param user_agent Optional user agent string (pass NULL for default)
+/// @param cookies Optional cookie string (pass NULL for default)
 /// @param out_content_length Pointer to store the HTTP content length (pass NULL to ignore)
 /// @return JSON string on success, NULL on failure
 ///
 /// the returned JSON format is the same as payload_list_partitions()
 /// if out_content_length is not NULL, it will be filled with the remote file size
+/// Cookies must be provided as a raw HTTP "Cookie" header value
+/// (for example "key1=value1; key2=value2")
 char* payload_list_partitions_remote_zip(const char* url,
                                          const char* user_agent,
+                                         const char* cookies,
                                          uint64_t* out_content_length);
 
 /// list all partitions in a remote payload.bin file (not in ZIP)
@@ -95,6 +100,7 @@ char* payload_list_partitions_remote_zip(const char* url,
 ///
 /// @param url URL to the remote payload.bin file
 /// @param user_agent Optional user agent string (pass NULL for default)
+/// @param cookies Optional cookie string (pass NULL for default)
 /// @param out_content_length Pointer to store the HTTP content length (pass NULL to ignore)
 /// @return JSON string on success, NULL on failure
 ///
@@ -102,6 +108,7 @@ char* payload_list_partitions_remote_zip(const char* url,
 /// if out_content_length is not NULL, it will be filled with the remote file size
 char* payload_list_partitions_remote_bin(const char* url,
                                          const char* user_agent,
+                                         const char* cookies,
                                          uint64_t* out_content_length);
 
 /// extract a single partition from a payload.bin file
@@ -164,6 +171,7 @@ int32_t payload_extract_partition_zip(const char* zip_path,
 /// @param partition_name Name of the partition to extract
 /// @param output_path Path where the partition image will be written
 /// @param user_agent Optional user agent string (pass NULL for default)
+/// @param cookies Optional cookie string (pass NULL for default)
 /// @param callback Optional progress callback (pass NULL for no callback)
 /// @param user_data User data passed to callback (can be NULL)
 /// @return 0 on success, -1 on failure (check payload_get_last_error())
@@ -184,6 +192,7 @@ int32_t payload_extract_partition_remote_zip(const char* url,
                                              const char* partition_name,
                                              const char* output_path,
                                              const char* user_agent,
+                                             const char* cookies,
                                              CProgressCallback callback,
                                              void* user_data);
 
@@ -193,6 +202,7 @@ int32_t payload_extract_partition_remote_zip(const char* url,
 /// @param partition_name Name of the partition to extract
 /// @param output_path Path where the partition image will be written
 /// @param user_agent Optional user agent string (pass NULL for default)
+/// @param cookies Optional cookie string (pass NULL for default)
 /// @param callback Optional progress callback (pass NULL for no callback)
 /// @param user_data User data passed to callback (can be NULL)
 /// @return 0 on success, -1 on failure (check payload_get_last_error())
@@ -213,6 +223,7 @@ int32_t payload_extract_partition_remote_bin(const char* url,
                                              const char* partition_name,
                                              const char* output_path,
                                              const char* user_agent,
+                                             const char* cookies,
                                              CProgressCallback callback,
                                              void* user_data);
 

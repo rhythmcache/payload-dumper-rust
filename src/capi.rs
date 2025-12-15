@@ -81,7 +81,8 @@ pub extern "C" fn payload_free_string(s: *mut c_char) {
 ///   "total_partitions": 10,
 ///   "total_operations": 1000,
 ///   "total_size_bytes": 5000000000,
-///   "total_size_readable": "4.66 GB"
+///   "total_size_readable": "4.66 GB",
+///   "security_patch_level": "2025-12-05" // optional, present only if available in payload
 /// }
 #[unsafe(no_mangle)]
 pub extern "C" fn payload_list_partitions(payload_path: *const c_char) -> *mut c_char {
@@ -186,16 +187,20 @@ pub extern "C" fn payload_list_partitions_zip(zip_path: *const c_char) -> *mut c
 ///
 /// @param url URL to the remote ZIP file
 /// @param user_agent Optional user agent string (pass NULL for default)
+/// @param cookies Optional cookie string (pass NULL for default)
 /// @param out_content_length Pointer to store the HTTP content length (pass NULL to ignore)
 /// @return JSON string on success, NULL on failure
 ///
 /// the returned JSON format is the same as payload_list_partitions()
 /// if out_content_length is not NULL, it will be filled with the remote file size
+/// Cookies must be provided as a raw HTTP "Cookie" header value
+/// (for example "key1=value1; key2=value2")
 #[cfg(feature = "remote_zip")]
 #[unsafe(no_mangle)]
 pub extern "C" fn payload_list_partitions_remote_zip(
     url: *const c_char,
     user_agent: *const c_char,
+    cookies: *const c_char,
     out_content_length: *mut u64,
 ) -> *mut c_char {
     clear_last_error();
@@ -230,7 +235,21 @@ pub extern "C" fn payload_list_partitions_remote_zip(
             }
         };
 
-        match list_partitions_remote_zip(url_str.to_string(), user_agent_str) {
+        let cookies_str = if cookies.is_null() {
+            None
+        } else {
+            unsafe {
+                match CStr::from_ptr(cookies).to_str() {
+                    Ok(s) => Some(s),
+                    Err(e) => {
+                        set_last_error(format!("Invalid UTF-8 in cookies: {}", e));
+                        return ptr::null_mut();
+                    }
+                }
+            }
+        };
+
+        match list_partitions_remote_zip(url_str.to_string(), user_agent_str, cookies_str) {
             Ok(result) => {
                 // write content length if pointer provided
                 if !out_content_length.is_null() {
@@ -271,6 +290,7 @@ pub extern "C" fn payload_list_partitions_remote_zip(
 ///
 /// @param url URL to the remote payload.bin file
 /// @param user_agent Optional user agent string (pass NULL for default)
+/// @param cookies Optional cookie string (pass NULL for default)
 /// @param out_content_length Pointer to store the HTTP content length (pass NULL to ignore)
 /// @return JSON string on success, NULL on failure
 ///
@@ -281,6 +301,7 @@ pub extern "C" fn payload_list_partitions_remote_zip(
 pub extern "C" fn payload_list_partitions_remote_bin(
     url: *const c_char,
     user_agent: *const c_char,
+    cookies: *const c_char,
     out_content_length: *mut u64,
 ) -> *mut c_char {
     clear_last_error();
@@ -315,7 +336,21 @@ pub extern "C" fn payload_list_partitions_remote_bin(
             }
         };
 
-        match list_partitions_remote_bin(url_str.to_string(), user_agent_str) {
+        let cookies_str = if cookies.is_null() {
+            None
+        } else {
+            unsafe {
+                match CStr::from_ptr(cookies).to_str() {
+                    Ok(s) => Some(s),
+                    Err(e) => {
+                        set_last_error(format!("Invalid UTF-8 in cookies: {}", e));
+                        return ptr::null_mut();
+                    }
+                }
+            }
+        };
+
+        match list_partitions_remote_bin(url_str.to_string(), user_agent_str, cookies_str) {
             Ok(result) => {
                 // write content length if pointer provided
                 if !out_content_length.is_null() {
@@ -666,6 +701,7 @@ pub extern "C" fn payload_extract_partition_zip(
 /// @param partition_name Name of the partition to extract
 /// @param output_path Path where the partition image will be written
 /// @param user_agent Optional user agent string (pass NULL for default)
+/// @param cookies Optional cookie string (pass NULL for default)
 /// @param callback Optional progress callback (pass NULL for no callback)
 /// @param user_data User data passed to callback (can be NULL)
 /// @return 0 on success, -1 on failure (check payload_get_last_error())
@@ -689,6 +725,7 @@ pub extern "C" fn payload_extract_partition_remote_zip(
     partition_name: *const c_char,
     output_path: *const c_char,
     user_agent: *const c_char,
+    cookies: *const c_char,
     callback: CProgressCallback,
     user_data: *mut c_void,
 ) -> i32 {
@@ -753,6 +790,20 @@ pub extern "C" fn payload_extract_partition_remote_zip(
             }
         };
 
+        let cookies_str = if cookies.is_null() {
+            None
+        } else {
+            unsafe {
+                match CStr::from_ptr(cookies).to_str() {
+                    Ok(s) => Some(s),
+                    Err(e) => {
+                        set_last_error(format!("Invalid UTF-8 in cookies: {}", e));
+                        return -1;
+                    }
+                }
+            }
+        };
+
         // check if callback is null by comparing function pointer to null cast
         let progress_cb: Option<ProgressCallback> = if callback as usize == 0 {
             None
@@ -770,6 +821,7 @@ pub extern "C" fn payload_extract_partition_remote_zip(
             partition_str,
             output_str,
             user_agent_str,
+            cookies_str,
             progress_cb,
         ) {
             Ok(()) => 0,
@@ -797,6 +849,7 @@ pub extern "C" fn payload_extract_partition_remote_zip(
 /// @param partition_name Name of the partition to extract
 /// @param output_path Path where the partition image will be written
 /// @param user_agent Optional user agent string (pass NULL for default)
+/// @param cookies Optional cookie string (pass NULL for default)
 /// @param callback Optional progress callback (pass NULL for no callback)
 /// @param user_data User data passed to callback (can be NULL)
 /// @return 0 on success, -1 on failure (check payload_get_last_error())
@@ -820,6 +873,7 @@ pub extern "C" fn payload_extract_partition_remote_bin(
     partition_name: *const c_char,
     output_path: *const c_char,
     user_agent: *const c_char,
+    cookies: *const c_char,
     callback: CProgressCallback,
     user_data: *mut c_void,
 ) -> i32 {
@@ -884,6 +938,20 @@ pub extern "C" fn payload_extract_partition_remote_bin(
             }
         };
 
+        let cookies_str = if cookies.is_null() {
+            None
+        } else {
+            unsafe {
+                match CStr::from_ptr(cookies).to_str() {
+                    Ok(s) => Some(s),
+                    Err(e) => {
+                        set_last_error(format!("Invalid UTF-8 in cookies: {}", e));
+                        return -1;
+                    }
+                }
+            }
+        };
+
         // check if callback is null by comparing function pointer to null cast
         let progress_cb: Option<ProgressCallback> = if callback as usize == 0 {
             None
@@ -901,6 +969,7 @@ pub extern "C" fn payload_extract_partition_remote_bin(
             partition_str,
             output_str,
             user_agent_str,
+            cookies_str,
             progress_cb,
         ) {
             Ok(()) => 0,
