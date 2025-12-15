@@ -214,7 +214,7 @@ jobs:
           path: payload_dumper-linux-${{ matrix.arch }}.zip
 
   build-android:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     strategy:
       matrix:
         include:
