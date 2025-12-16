@@ -7,12 +7,13 @@ use async_trait::async_trait;
 use std::path::PathBuf;
 use std::pin::Pin;
 use tokio::fs::File;
-use tokio::io::{AsyncRead, AsyncWriteExt};
+use tokio::io::AsyncRead;
 
 use crate::http::HttpReader;
 use crate::payload::payload_dumper::{AsyncPayloadRead, PayloadReader, ProgressReporter};
 use crate::readers::local_reader::LocalAsyncPayloadReader;
 use crate::structs::PartitionUpdate;
+use tokio::io::BufWriter;
 
 /// configuration for partition extraction
 #[derive(Debug, Clone)]
@@ -94,6 +95,8 @@ impl DownloadProgressReporter for NoOpDownloadReporter {
 ///
 /// # arguments
 /// * `payload_offset` - offset where payload.bin starts in the file (0 for .bin, non-zero for ZIP)
+
+/// download partition data from HTTP to a temporary file (STREAMING VERSION)
 async fn download_partition_data(
     http_reader: &HttpReader,
     range: &PartitionDataRange,
@@ -102,29 +105,43 @@ async fn download_partition_data(
     reporter: &dyn DownloadProgressReporter,
     payload_offset: u64,
 ) -> Result<()> {
+    use futures::StreamExt;
+    use tokio::io::AsyncWriteExt;
+
     reporter.on_download_start(partition_name, range.total_bytes);
 
-    let mut file = File::create(temp_path).await?;
+    let file = File::create(temp_path).await?;
+    let mut file = BufWriter::with_capacity(1024 * 1024, file); // 1MB write buffer
 
-    const BUFFER_SIZE: usize = 256 * 1024; // 256 KB buffer
-    let mut buffer = vec![0u8; BUFFER_SIZE];
+    let start_offset = range.min_offset + payload_offset;
+    let end_offset = start_offset + range.total_bytes - 1;
+    let range_header = format!("bytes={}-{}", start_offset, end_offset);
+
+    // Make ONE streaming request for entire range
+    let response = http_reader
+        .client
+        .get(&http_reader.url)
+        .header(reqwest::header::RANGE, range_header)
+        .send()
+        .await?;
+
+    if !response.status().is_success() && response.status().as_u16() != 206 {
+        return Err(anyhow!("Range request failed: {}", response.status()));
+    }
+
+    // Stream chunks as they arrive
+    let mut stream = response.bytes_stream();
     let mut downloaded = 0u64;
     let total = range.total_bytes;
-    let mut current_offset = range.min_offset + payload_offset;
 
-    while downloaded < total {
-        let remaining = total - downloaded;
-        let chunk_size = remaining.min(BUFFER_SIZE as u64) as usize;
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result?;
+        let chunk_len = chunk.len() as u64;
 
-        http_reader
-            .read_at(current_offset, &mut buffer[..chunk_size])
-            .await?;
+        // Write chunk to disk
+        file.write_all(&chunk).await?;
 
-        file.write_all(&buffer[..chunk_size]).await?;
-
-        downloaded += chunk_size as u64;
-        current_offset += chunk_size as u64;
-
+        downloaded += chunk_len;
         reporter.on_download_progress(partition_name, downloaded, total);
     }
 
@@ -226,7 +243,6 @@ where
     )
     .await?;
 
-    // create offset-translating reader
     let reader = OffsetTranslatingReader::new(paths.temp_path, range.min_offset).await?;
 
     // extract using standard dump_partition
