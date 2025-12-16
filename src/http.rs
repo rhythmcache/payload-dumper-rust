@@ -94,20 +94,6 @@ async fn create_http_client(user_agent: Option<&str>, cookies: Option<&str>) -> 
         }
     }
 
-    headers.insert(
-        header::ACCEPT_ENCODING,
-        header::HeaderValue::from_static("gzip, deflate, br"),
-    );
-    headers.insert(header::ACCEPT, header::HeaderValue::from_static("*/*"));
-    headers.insert(
-        header::CONNECTION,
-        header::HeaderValue::from_static("keep-alive"),
-    );
-    headers.insert(
-        header::CACHE_CONTROL,
-        header::HeaderValue::from_static("no-transform"),
-    );
-
     let mut client_builder = Client::builder()
         .timeout(Duration::from_secs(600))
         .connect_timeout(Duration::from_secs(30))
