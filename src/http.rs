@@ -5,6 +5,7 @@
 #![allow(unused)]
 use crate::constants::DEFAULT_USER_AGENT;
 use anyhow::{Result, anyhow};
+use futures_util::StreamExt;
 use reqwest::{Client, header};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -264,18 +265,51 @@ impl HttpReader {
                         return Err(anyhow!("Range request failed: {}", status));
                     }
 
-                    let bytes = response.bytes().await?;
+                    let mut stream = response.bytes_stream();
+                    let mut pos = 0;
 
-                    if bytes.len() != to_read {
-                        return Err(anyhow!(
-                            "Server returned incorrect bytes: expected {}, got {}",
-                            to_read,
-                            bytes.len()
-                        ));
+                    while let Some(chunk_result) = stream.next().await {
+                        match chunk_result {
+                            Ok(chunk) => {
+                                let chunk_len = chunk.len();
+
+                                // prevent buffer overflow
+                                if pos + chunk_len > to_read {
+                                    return Err(anyhow!(
+                                        "Server returned too much data: expected {}, got {} so far",
+                                        to_read,
+                                        pos + chunk_len
+                                    ));
+                                }
+
+                                buf[pos..pos + chunk_len].copy_from_slice(&chunk);
+                                pos += chunk_len;
+                            }
+                            Err(e) => {
+                                // stream error - will retry
+                                last_error = Some(e);
+                                break;
+                            }
+                        }
                     }
 
-                    buf[..to_read].copy_from_slice(&bytes);
-                    return Ok(());
+                    // Check if we got all the data
+                    if pos == to_read {
+                        return Ok(());
+                    } else if last_error.is_some() {
+                        // stream error occurred, retry
+                        retry_count += 1;
+                        if retry_count < MAX_RETRIES {
+                            tokio::time::sleep(Duration::from_secs(2u64.pow(retry_count))).await;
+                        }
+                    } else {
+                        // stream ended early without error
+                        return Err(anyhow!(
+                            "Server returned incomplete data: expected {}, got {}",
+                            to_read,
+                            pos
+                        ));
+                    }
                 }
                 Err(e) => {
                     last_error = Some(e);
