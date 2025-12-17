@@ -98,7 +98,7 @@ async fn create_http_client(user_agent: Option<&str>, cookies: Option<&str>) -> 
     let mut client_builder = Client::builder()
         .timeout(Duration::from_secs(600))
         .connect_timeout(Duration::from_secs(30))
-        .pool_max_idle_per_host(10)
+        .pool_max_idle_per_host(32)
         .pool_idle_timeout(Duration::from_secs(90))
         .tcp_keepalive(Some(Duration::from_secs(30)))
         .http2_keep_alive_interval(Some(Duration::from_secs(30)))
