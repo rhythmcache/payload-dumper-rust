@@ -10,6 +10,7 @@ use crate::readers::remote_bin_reader::RemoteAsyncBinPayloadReader;
 use crate::readers::remote_zip_reader::RemoteAsyncZipPayloadReader;
 use anyhow::{Result, anyhow};
 use std::path::Path;
+use std::sync::Arc;
 
 // Re-export shared types from local module
 pub use crate::extractor::local::{
@@ -21,6 +22,185 @@ pub use crate::extractor::local::{
 pub struct RemotePartitionList {
     pub json: String,
     pub content_length: u64,
+}
+
+pub struct RemoteZipExtractionContext {
+    manifest: crate::structs::DeltaArchiveManifest,
+    data_offset: u64,
+    block_size: u64,
+    reader: Arc<RemoteAsyncZipPayloadReader>,
+}
+
+impl RemoteZipExtractionContext {
+    pub fn new(url: String, user_agent: Option<&str>, cookies: Option<&str>) -> Result<Self> {
+        if tokio::runtime::Handle::try_current().is_ok() {
+            panic!("Cannot be called from within async runtime");
+        }
+
+        RUNTIME.block_on(async {
+            let (manifest, data_offset, _) =
+                parse_remote_payload(url.clone(), user_agent, cookies).await?;
+
+            let block_size = manifest.block_size.unwrap_or(4096) as u64;
+
+            let reader =
+                Arc::new(RemoteAsyncZipPayloadReader::new(url, user_agent, cookies).await?);
+
+            Ok(Self {
+                manifest,
+                data_offset,
+                block_size,
+                reader,
+            })
+        })
+    }
+
+    pub fn extract_partition<P: AsRef<Path>>(
+        &self,
+        partition_name: &str,
+        output_path: P,
+        progress_callback: Option<ProgressCallback>,
+    ) -> Result<()> {
+        if tokio::runtime::Handle::try_current().is_ok() {
+            panic!("Cannot be called from within async runtime");
+        }
+
+        RUNTIME.block_on(async {
+            let partition = self
+                .manifest
+                .partitions
+                .iter()
+                .find(|p| p.partition_name == partition_name)
+                .ok_or_else(|| anyhow!("Partition '{}' not found", partition_name))?;
+
+            if let Some(parent) = output_path.as_ref().parent() {
+                tokio::fs::create_dir_all(parent).await?;
+            }
+
+            let reporter: Box<dyn ProgressReporter> = if let Some(callback) = progress_callback {
+                Box::new(crate::extractor::local::CallbackProgressReporter::new(
+                    callback,
+                ))
+            } else {
+                Box::new(crate::payload::payload_dumper::NoOpReporter)
+            };
+
+            dump_partition(
+                partition,
+                self.data_offset,
+                self.block_size,
+                output_path.as_ref().to_path_buf(),
+                &self.reader,
+                &*reporter,
+            )
+            .await?;
+
+            Ok(())
+        })
+    }
+
+    /// get list of available partitions
+    pub fn partitions(&self) -> Vec<String> {
+        self.manifest
+            .partitions
+            .iter()
+            .map(|p| p.partition_name.clone())
+            .collect()
+    }
+
+    /// get partition count
+    pub fn partition_count(&self) -> usize {
+        self.manifest.partitions.len()
+    }
+}
+
+pub struct RemoteBinExtractionContext {
+    manifest: crate::structs::DeltaArchiveManifest,
+    data_offset: u64,
+    block_size: u64,
+    reader: Arc<RemoteAsyncBinPayloadReader>,
+}
+
+impl RemoteBinExtractionContext {
+    pub fn new(url: String, user_agent: Option<&str>, cookies: Option<&str>) -> Result<Self> {
+        if tokio::runtime::Handle::try_current().is_ok() {
+            panic!("Cannot be called from within async runtime");
+        }
+
+        RUNTIME.block_on(async {
+            let (manifest, data_offset, _) =
+                parse_remote_bin_payload(url.clone(), user_agent, cookies).await?;
+
+            let block_size = manifest.block_size.unwrap_or(4096) as u64;
+
+            let reader =
+                Arc::new(RemoteAsyncBinPayloadReader::new(url, user_agent, cookies).await?);
+
+            Ok(Self {
+                manifest,
+                data_offset,
+                block_size,
+                reader,
+            })
+        })
+    }
+    pub fn extract_partition<P: AsRef<Path>>(
+        &self,
+        partition_name: &str,
+        output_path: P,
+        progress_callback: Option<ProgressCallback>,
+    ) -> Result<()> {
+        if tokio::runtime::Handle::try_current().is_ok() {
+            panic!("Cannot be called from within async runtime");
+        }
+
+        RUNTIME.block_on(async {
+            let partition = self
+                .manifest
+                .partitions
+                .iter()
+                .find(|p| p.partition_name == partition_name)
+                .ok_or_else(|| anyhow!("Partition '{}' not found", partition_name))?;
+
+            if let Some(parent) = output_path.as_ref().parent() {
+                tokio::fs::create_dir_all(parent).await?;
+            }
+
+            let reporter: Box<dyn ProgressReporter> = if let Some(callback) = progress_callback {
+                Box::new(crate::extractor::local::CallbackProgressReporter::new(
+                    callback,
+                ))
+            } else {
+                Box::new(crate::payload::payload_dumper::NoOpReporter)
+            };
+
+            dump_partition(
+                partition,
+                self.data_offset,
+                self.block_size,
+                output_path.as_ref().to_path_buf(),
+                &self.reader,
+                &*reporter,
+            )
+            .await?;
+
+            Ok(())
+        })
+    }
+
+    /// Get list of available partitions
+    pub fn partitions(&self) -> Vec<String> {
+        self.manifest
+            .partitions
+            .iter()
+            .map(|p| p.partition_name.clone())
+            .collect()
+    }
+
+    /// Get partition count
+    pub fn partition_count(&self) -> usize {
+        self.manifest.partitions.len()
+    }
 }
 
 /* List Partitions (Remote ZIP) */
@@ -302,7 +482,7 @@ pub fn extract_partition_remote_bin<P: AsRef<Path>>(
     // check if we're already inside a tokio runtime
     if tokio::runtime::Handle::try_current().is_ok() {
         panic!(
-            "extract_partition_remote_bin cannot be called from within an async runtime. Use spawn_blocking or call from a synchronous context."
+            "extract_partition_remote_bin cannot be called from within async runtime. Use spawn_blocking or call from a synchronous context."
         );
     }
 
