@@ -6,14 +6,18 @@
 use anyhow::{Result, anyhow};
 use async_compression::tokio::bufread::{BzDecoder, XzDecoder, ZstdDecoder};
 use async_trait::async_trait;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
-/* use std::sync::atomic::{AtomicBool, Ordering}; */
 use tokio::fs::File;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
 
 pub use crate::structs::PartitionUpdate;
 use crate::structs::{InstallOperation, install_operation};
+
+#[cfg(feature = "diff_ota")]
+use crate::payload::diff::{DiffContext, process_diff_operation};
+use crate::utils::is_diff_operation;
 
 const BUFREADER_SIZE: usize = 64 * 1024; // 64 KB for BufReader (decompression streams)
 const COPY_BUFFER_SIZE: usize = 128 * 1024; // 128 KB for direct copy operations
@@ -107,6 +111,10 @@ struct OperationContext<'a> {
     out_file: &'a mut File,
     copy_buffer: &'a mut [u8],
     zero_buffer: &'a [u8],
+    #[cfg(feature = "diff_ota")]
+    diff_ctx: Option<&'a DiffContext>,
+    #[cfg(feature = "diff_ota")]
+    source_file: Option<&'a mut File>,
 }
 
 async fn process_operation_streaming(
@@ -214,11 +222,41 @@ async fn process_operation_streaming(
         install_operation::Type::SourceCopy
         | install_operation::Type::SourceBsdiff
         | install_operation::Type::BrotliBsdiff
-        | install_operation::Type::Lz4diffBsdiff => {
-            return Err(anyhow!(
-                "Operation {} is a differential OTA operation which is not supported",
-                operation_index
-            ));
+        | install_operation::Type::Lz4diffBsdiff
+        | install_operation::Type::Lz4diffPuffdiff
+        | install_operation::Type::Puffdiff
+        | install_operation::Type::Zucchini => {
+            #[cfg(feature = "diff_ota")]
+            {
+                if let (Some(diff_ctx), Some(source_file)) =
+                    (ctx.diff_ctx, ctx.source_file.as_mut())
+                {
+                    process_diff_operation(
+                        operation_index,
+                        op,
+                        diff_ctx,
+                        partition_name,
+                        source_file,
+                        ctx.out_file,
+                        ctx.payload_reader,
+                        ctx.data_offset,
+                        reporter,
+                    )
+                    .await?;
+                } else {
+                    return Err(anyhow!(
+                        "Operation {} is a differential OTA operation but source directory not provided. Use --source-dir option.",
+                        operation_index
+                    ));
+                }
+            }
+            #[cfg(not(feature = "diff_ota"))]
+            {
+                return Err(anyhow!(
+                    "Operation {} is a differential OTA operation. Rebuild with 'diff_ota' feature enabled to support incremental OTAs.",
+                    operation_index
+                ));
+            }
         }
         _ => {
             reporter.on_warning(
@@ -241,18 +279,59 @@ async fn process_operation_streaming(
 /// * `output_path` -> where to write the partition image
 /// * `payload_reader` -> reader for the payload data
 /// * `reporter` -> progress reporter implementation
+/// * `source_dir` -> (optional) directory containing source images for differential OTA
 pub async fn dump_partition<P: AsyncPayloadRead>(
     partition: &PartitionUpdate,
     data_offset: u64,
     block_size: u64,
-    output_path: std::path::PathBuf,
+    output_path: PathBuf,
     payload_reader: &P,
     reporter: &dyn ProgressReporter,
+    source_dir: Option<PathBuf>,
 ) -> Result<()> {
     let partition_name = &partition.partition_name;
     let total_ops = partition.operations.len() as u64;
 
     reporter.on_start(partition_name, total_ops);
+
+    // Check if this is a differential OTA
+    let has_diff_ops = partition
+        .operations
+        .iter()
+        .any(|op| is_diff_operation(op.r#type()));
+
+    #[cfg(feature = "diff_ota")]
+    let (diff_ctx, mut source_file_opt) = if has_diff_ops {
+        if let Some(src_dir) = source_dir {
+            let diff_ctx = DiffContext::new(src_dir, block_size);
+            let source_img_path = diff_ctx.source_dir.join(format!("{}.img", partition_name));
+
+            if !source_img_path.exists() {
+                return Err(anyhow!(
+                    "Differential OTA requires source image: {} not found",
+                    source_img_path.display()
+                ));
+            }
+
+            let source_file = File::open(&source_img_path).await?;
+            (Some(diff_ctx), Some(source_file))
+        } else {
+            return Err(anyhow!(
+                "Partition '{}' contains differential operations but no source directory provided. Use --source-dir option.",
+                partition_name
+            ));
+        }
+    } else {
+        (None, None)
+    };
+
+    #[cfg(not(feature = "diff_ota"))]
+    if has_diff_ops && source_dir.is_none() {
+        return Err(anyhow!(
+            "Partition '{}' contains differential operations. Rebuild with 'diff_ota' feature or provide source directory.",
+            partition_name
+        ));
+    }
 
     let mut out_file = File::create(&output_path).await?;
 
@@ -278,6 +357,10 @@ pub async fn dump_partition<P: AsyncPayloadRead>(
         out_file: &mut out_file,
         copy_buffer: &mut copy_buffer,
         zero_buffer: &zero_buffer,
+        #[cfg(feature = "diff_ota")]
+        diff_ctx: diff_ctx.as_ref(),
+        #[cfg(feature = "diff_ota")]
+        source_file: source_file_opt.as_mut(),
     };
 
     for (i, op) in partition.operations.iter().enumerate() {

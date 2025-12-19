@@ -3,6 +3,7 @@
 // https://github.com/rhythmcache/payload-dumper-rust
 
 use crate::constants::{PAYLOAD_MAGIC, ZIP_MAGIC};
+use crate::structs::install_operation;
 use anyhow::{Result, anyhow};
 use std::time::Duration;
 
@@ -58,4 +59,17 @@ pub fn format_size(size: u64) -> String {
     } else {
         format!("{} bytes", size)
     }
+}
+
+pub fn is_diff_operation(op_type: install_operation::Type) -> bool {
+    matches!(
+        op_type,
+        install_operation::Type::SourceCopy
+            | install_operation::Type::SourceBsdiff
+            | install_operation::Type::BrotliBsdiff
+            | install_operation::Type::Lz4diffBsdiff
+            | install_operation::Type::Lz4diffPuffdiff
+            | install_operation::Type::Puffdiff
+            | install_operation::Type::Zucchini
+    )
 }

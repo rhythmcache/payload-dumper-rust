@@ -69,6 +69,7 @@ ahash = "0.8.12"
 hickory-proto = { version = "0.25.2", optional = true }
 once_cell = "1.21.3"
 futures-util = "0.3.31"
+bsdiff = { version = "0.2.1", optional = true }
 
 [build-dependencies]
 chrono      = "0.4.42"
@@ -84,8 +85,10 @@ hickory_dns = [
     "dep:hickory-proto",
     "reqwest?/hickory-dns",
 ]
+diff_ota = ["dep:bsdiff", "async-compression/lz4", "async-compression/brotli"]
 prefetch = ["remote_zip", "dep:tempfile"]
 capi = []
+bsdiff = ["dep:bsdiff"]
 
 [package.metadata.capi.header]
 name = "payload_dumper"

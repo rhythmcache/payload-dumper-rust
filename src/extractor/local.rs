@@ -306,7 +306,7 @@ impl ProgressReporter for CallbackProgressReporter {
 ///     .into_iter()
 ///     .map(|partition| {
 ///         thread::spawn(move || {
-///             extract_partition("payload.bin", partition, format!("out/{}", partition), None)
+///             extract_partition("payload.bin", partition, format!("out/{}", partition), None, None)
 ///         })
 ///     })
 ///     .collect();
@@ -315,15 +315,17 @@ impl ProgressReporter for CallbackProgressReporter {
 ///     handle.join().unwrap().unwrap();
 /// }
 /// ```
-pub fn extract_partition<P1, P2>(
+pub fn extract_partition<P1, P2, P3>(
     payload_path: P1,
     partition_name: &str,
     output_path: P2,
     progress_callback: Option<ProgressCallback>,
+    source_dir: Option<P3>,
 ) -> Result<()>
 where
     P1: AsRef<Path>,
     P2: AsRef<Path>,
+    P3: AsRef<Path>,
 {
     // check if we're already inside a tokio runtime
     if tokio::runtime::Handle::try_current().is_ok() {
@@ -356,6 +358,8 @@ where
             Box::new(crate::payload::payload_dumper::NoOpReporter)
         };
 
+        let source_dir_path = source_dir.map(|p| p.as_ref().to_path_buf());
+
         dump_partition(
             partition,
             data_offset,
@@ -363,6 +367,7 @@ where
             output_path.as_ref().to_path_buf(),
             &payload_reader,
             &*reporter,
+            source_dir_path,
         )
         .await?;
 
@@ -391,15 +396,17 @@ where
 /// panics if called from within an async runtime context (e.g. inside a tokio task).
 /// this is a blocking function and must be called from a synchronous context only.
 #[cfg(feature = "remote_zip")]
-pub fn extract_partition_zip<P1, P2>(
+pub fn extract_partition_zip<P1, P2, P3>(
     zip_path: P1,
     partition_name: &str,
     output_path: P2,
     progress_callback: Option<ProgressCallback>,
+    source_dir: Option<P3>,
 ) -> Result<()>
 where
     P1: AsRef<Path>,
     P2: AsRef<Path>,
+    P3: AsRef<Path>,
 {
     // check if we're already inside a tokio runtime
     if tokio::runtime::Handle::try_current().is_ok() {
@@ -433,6 +440,8 @@ where
             Box::new(crate::payload::payload_dumper::NoOpReporter)
         };
 
+        let source_dir_path = source_dir.map(|p| p.as_ref().to_path_buf());
+
         dump_partition(
             partition,
             data_offset,
@@ -440,6 +449,7 @@ where
             output_path.as_ref().to_path_buf(),
             &payload_reader,
             &*reporter,
+            source_dir_path,
         )
         .await?;
 

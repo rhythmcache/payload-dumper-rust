@@ -55,12 +55,17 @@ impl RemoteZipExtractionContext {
         })
     }
 
-    pub fn extract_partition<P: AsRef<Path>>(
+    pub fn extract_partition<P1, P2>(
         &self,
         partition_name: &str,
-        output_path: P,
+        output_path: P1,
         progress_callback: Option<ProgressCallback>,
-    ) -> Result<()> {
+        source_dir: Option<P2>,
+    ) -> Result<()>
+    where
+        P1: AsRef<Path>,
+        P2: AsRef<Path>,
+    {
         if tokio::runtime::Handle::try_current().is_ok() {
             panic!("Cannot be called from within async runtime");
         }
@@ -85,6 +90,8 @@ impl RemoteZipExtractionContext {
                 Box::new(crate::payload::payload_dumper::NoOpReporter)
             };
 
+            let source_dir_path = source_dir.map(|p| p.as_ref().to_path_buf());
+
             dump_partition(
                 partition,
                 self.data_offset,
@@ -92,6 +99,7 @@ impl RemoteZipExtractionContext {
                 output_path.as_ref().to_path_buf(),
                 &self.reader,
                 &*reporter,
+                source_dir_path,
             )
             .await?;
 
@@ -144,12 +152,18 @@ impl RemoteBinExtractionContext {
             })
         })
     }
-    pub fn extract_partition<P: AsRef<Path>>(
+
+    pub fn extract_partition<P1, P2>(
         &self,
         partition_name: &str,
-        output_path: P,
+        output_path: P1,
         progress_callback: Option<ProgressCallback>,
-    ) -> Result<()> {
+        source_dir: Option<P2>,
+    ) -> Result<()>
+    where
+        P1: AsRef<Path>,
+        P2: AsRef<Path>,
+    {
         if tokio::runtime::Handle::try_current().is_ok() {
             panic!("Cannot be called from within async runtime");
         }
@@ -174,6 +188,8 @@ impl RemoteBinExtractionContext {
                 Box::new(crate::payload::payload_dumper::NoOpReporter)
             };
 
+            let source_dir_path = source_dir.map(|p| p.as_ref().to_path_buf());
+
             dump_partition(
                 partition,
                 self.data_offset,
@@ -181,6 +197,7 @@ impl RemoteBinExtractionContext {
                 output_path.as_ref().to_path_buf(),
                 &self.reader,
                 &*reporter,
+                source_dir_path,
             )
             .await?;
 
@@ -349,6 +366,7 @@ pub fn list_partitions_remote_bin(
 /// * `output_path` - Local path where to write the partition image
 /// * `user_agent` - Optional custom user agent string
 /// * `progress_callback` - Optional callback for progress updates
+/// * `source_dir` - Optional directory containing source images for differential OTA
 ///
 /// # Thread Safety
 /// this function can be safely called concurrently from multiple threads thanks
@@ -379,6 +397,8 @@ pub fn list_partitions_remote_bin(
 ///                 partition,
 ///                 format!("out/{}", partition),
 ///                 None,
+///                 None,
+///                 None,
 ///                 None
 ///             )
 ///         })
@@ -389,14 +409,19 @@ pub fn list_partitions_remote_bin(
 ///     handle.join().unwrap().unwrap();
 /// }
 /// ```
-pub fn extract_partition_remote_zip<P: AsRef<Path>>(
+pub fn extract_partition_remote_zip<P1, P2>(
     url: String,
     partition_name: &str,
-    output_path: P,
+    output_path: P1,
     user_agent: Option<&str>,
     cookies: Option<&str>,
     progress_callback: Option<ProgressCallback>,
-) -> Result<()> {
+    source_dir: Option<P2>,
+) -> Result<()>
+where
+    P1: AsRef<Path>,
+    P2: AsRef<Path>,
+{
     // check if we're already inside a tokio runtime
     if tokio::runtime::Handle::try_current().is_ok() {
         panic!(
@@ -430,6 +455,8 @@ pub fn extract_partition_remote_zip<P: AsRef<Path>>(
             Box::new(crate::payload::payload_dumper::NoOpReporter)
         };
 
+        let source_dir_path = source_dir.map(|p| p.as_ref().to_path_buf());
+
         dump_partition(
             partition,
             data_offset,
@@ -437,6 +464,7 @@ pub fn extract_partition_remote_zip<P: AsRef<Path>>(
             output_path.as_ref().to_path_buf(),
             &payload_reader,
             &*reporter,
+            source_dir_path,
         )
         .await?;
 
@@ -458,6 +486,7 @@ pub fn extract_partition_remote_zip<P: AsRef<Path>>(
 /// * `output_path` - Local path where to write the partition image
 /// * `user_agent` - Optional custom user agent string
 /// * `progress_callback` - Optional callback for progress updates
+/// * `source_dir` - Optional directory containing source images for differential OTA
 ///
 /// # Thread Safety
 /// this function can be safely called concurrently from multiple threads thanks
@@ -471,14 +500,19 @@ pub fn extract_partition_remote_zip<P: AsRef<Path>>(
 /// # Panics
 /// panics if called from within an async runtime context (e.g inside a tokio task).
 /// this is a blocking function and must be called from a synchronous context only.
-pub fn extract_partition_remote_bin<P: AsRef<Path>>(
+pub fn extract_partition_remote_bin<P1, P2>(
     url: String,
     partition_name: &str,
-    output_path: P,
+    output_path: P1,
     user_agent: Option<&str>,
     cookies: Option<&str>,
     progress_callback: Option<ProgressCallback>,
-) -> Result<()> {
+    source_dir: Option<P2>,
+) -> Result<()>
+where
+    P1: AsRef<Path>,
+    P2: AsRef<Path>,
+{
     // check if we're already inside a tokio runtime
     if tokio::runtime::Handle::try_current().is_ok() {
         panic!(
@@ -512,6 +546,8 @@ pub fn extract_partition_remote_bin<P: AsRef<Path>>(
             Box::new(crate::payload::payload_dumper::NoOpReporter)
         };
 
+        let source_dir_path = source_dir.map(|p| p.as_ref().to_path_buf());
+
         dump_partition(
             partition,
             data_offset,
@@ -519,6 +555,7 @@ pub fn extract_partition_remote_bin<P: AsRef<Path>>(
             output_path.as_ref().to_path_buf(),
             &payload_reader,
             &*reporter,
+            source_dir_path,
         )
         .await?;
 

@@ -221,6 +221,7 @@ pub async fn prefetch_and_dump_partition<D, E>(
     paths: ExtractionPaths,
     download_reporter: &D,
     extract_reporter: &E,
+    source_dir: Option<PathBuf>,
 ) -> Result<()>
 where
     D: DownloadProgressReporter,
@@ -253,6 +254,7 @@ where
         paths.output_path,
         &reader,
         extract_reporter,
+        source_dir,
     )
     .await?;
 
