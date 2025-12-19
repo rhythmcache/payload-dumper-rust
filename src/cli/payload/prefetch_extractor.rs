@@ -35,7 +35,6 @@ pub async fn extract_partitions_prefetch(
         extract_prefetch_sequential(args, partitions, &config, url, ui).await
     } else {
         let thread_count = args.threads.unwrap_or_else(num_cpus::get);
-
         extract_prefetch_parallel(args, partitions, &config, url, thread_count, ui).await
     }
 }
@@ -73,6 +72,7 @@ async fn extract_prefetch_sequential(
             paths,
             &download_reporter,
             &extraction_reporter,
+            Some(args.source_dir.clone()),
         )
         .await
         {
@@ -105,6 +105,7 @@ async fn extract_prefetch_parallel(
     let semaphore = Arc::new(Semaphore::new(thread_count));
     let mut tasks = Vec::new();
     let out_dir = args.out.clone();
+    let source_dir = args.source_dir.clone();
     let config = config.clone();
 
     for partition in partitions {
@@ -114,6 +115,7 @@ async fn extract_prefetch_parallel(
         let semaphore = Arc::clone(&semaphore);
         let temp_dir_path = temp_dir_path.clone();
         let out_dir = out_dir.clone();
+        let source_dir = source_dir.clone();
         let config = config.clone();
         let download_progress = ui.create_download_progress("");
         let extraction_progress = ui.create_extraction_progress(&partition_name);
@@ -136,6 +138,7 @@ async fn extract_prefetch_parallel(
                 paths,
                 &download_reporter,
                 &extraction_reporter,
+                Some(source_dir),
             )
             .await
             {

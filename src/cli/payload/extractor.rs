@@ -72,6 +72,7 @@ async fn extract_sequential(
             output_path,
             &payload_reader,
             &reporter,
+            Some(args.source_dir.clone()),
         )
         .await
         {
@@ -99,14 +100,14 @@ async fn extract_parallel(
     let semaphore = Arc::new(Semaphore::new(thread_count));
     let mut tasks = Vec::new();
     let out_dir = args.out.clone();
+    let source_dir = args.source_dir.clone();
 
     for partition in partitions {
         let partition = partition.clone();
         let payload_reader = Arc::clone(&payload_reader);
         let out_dir = out_dir.clone();
+        let source_dir = source_dir.clone();
         let semaphore = Arc::clone(&semaphore);
-
-        // Create progress through UI layer - no indicatif imports needed!
         let progress = ui.create_extraction_progress(&partition.partition_name);
 
         let task = tokio::spawn(async move {
@@ -123,6 +124,7 @@ async fn extract_parallel(
                 output_path,
                 &payload_reader,
                 &reporter,
+                Some(source_dir),
             )
             .await
             {
