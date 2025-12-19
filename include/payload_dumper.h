@@ -134,6 +134,7 @@ char* payload_list_partitions_remote_bin(const char* url,
  * @param output_path Path where the partition image will be written
  * @param callback Optional progress callback (pass NULL for no callback)
  * @param user_data User data passed to callback (can be NULL)
+ * @param source_dir: Source dir where original image is stored ( for differential ota operations )
  * @return 0 on success, -1 on failure (check payload_get_last_error())
  *
  * This function can be safely called from multiple threads concurrently.
@@ -153,7 +154,8 @@ int32_t payload_extract_partition(const char* payload_path,
                                   const char* partition_name,
                                   const char* output_path,
                                   CProgressCallback callback,
-                                  void* user_data);
+                                  void* user_data,
+                                  const char* source_dir);
 
 /**
  * extract a single partition from a ZIP file containing payload.bin
@@ -163,6 +165,7 @@ int32_t payload_extract_partition(const char* payload_path,
  * @param output_path Path where the partition image will be written
  * @param callback Optional progress callback (pass NULL for no callback)
  * @param user_data User data passed to callback (can be NULL)
+ * @param source_dir: Source dir where original image is stored ( for differential ota operations )
  * @return 0 on success, -1 on failure (check payload_get_last_error())
  *
  * this function can be safely called from multiple threads concurrently.
@@ -182,7 +185,8 @@ int32_t payload_extract_partition_zip(const char* zip_path,
                                       const char* partition_name,
                                       const char* output_path,
                                       CProgressCallback callback,
-                                      void* user_data);
+                                      void* user_data,
+                                      const char* source_dir);
 
 /**
  * extract a single partition from a remote ZIP file containing payload.bin
@@ -194,6 +198,7 @@ int32_t payload_extract_partition_zip(const char* zip_path,
  * @param cookies Optional cookie string (pass NULL for default)
  * @param callback Optional progress callback (pass NULL for no callback)
  * @param user_data User data passed to callback (can be NULL)
+ * @param source_dir: Source dir where original image is stored ( for differential ota operations )
  * @return 0 on success, -1 on failure (check payload_get_last_error())
  *
  * this function can be safely called from multiple threads concurrently.
@@ -215,7 +220,8 @@ int32_t payload_extract_partition_remote_zip(const char* url,
                                              const char* user_agent,
                                              const char* cookies,
                                              CProgressCallback callback,
-                                             void* user_data);
+                                             void* user_data,
+                                             const char* source_dir);
 
 /**
  * extract a single partition from a remote payload.bin file (not in ZIP)
@@ -227,6 +233,7 @@ int32_t payload_extract_partition_remote_zip(const char* url,
  * @param cookies Optional cookie string (pass NULL for default)
  * @param callback Optional progress callback (pass NULL for no callback)
  * @param user_data User data passed to callback (can be NULL)
+ * @param source_dir: Source dir where original image is stored ( for differential ota operations )
  * @return 0 on success, -1 on failure (check payload_get_last_error())
  *
  * this function can be safely called from multiple threads concurrently.
@@ -248,7 +255,8 @@ int32_t payload_extract_partition_remote_bin(const char* url,
                                              const char* user_agent,
                                              const char* cookies,
                                              CProgressCallback callback,
-                                             void* user_data);
+                                             void* user_data,
+                                             const char* source_dir);
 
 /**
  * get library version

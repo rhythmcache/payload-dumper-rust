@@ -485,6 +485,7 @@ impl CCallbackWrapper {
 /// @param output_path Path where the partition image will be written
 /// @param callback Optional progress callback (pass NULL for no callback)
 /// @param user_data User data passed to callback (can be NULL)
+/// @param source_dir: Source dir where original image is stored ( for differential ota operations )
 /// @return 0 on success, -1 on failure (check payload_get_last_error())
 ///
 /// This function can be safely called from multiple threads concurrently.
@@ -506,6 +507,7 @@ pub extern "C" fn payload_extract_partition(
     output_path: *const c_char,
     callback: CProgressCallback, // function pointer (use NULL-equivalent cast from C side)
     user_data: *mut c_void,
+    source_dir: *const c_char,
 ) -> i32 {
     clear_last_error();
 
@@ -555,6 +557,20 @@ pub extern "C" fn payload_extract_partition(
             }
         };
 
+        let source_dir_str = if source_dir.is_null() {
+            None
+        } else {
+            unsafe {
+                match CStr::from_ptr(source_dir).to_str() {
+                    Ok(s) => Some(s),
+                    Err(e) => {
+                        set_last_error(format!("Invalid UTF-8 in source_dir: {}", e));
+                        return -1;
+                    }
+                }
+            }
+        };
+
         // check if callback is null by comparing function pointer to null cast
         let progress_cb: Option<ProgressCallback> = if callback as usize == 0 {
             None
@@ -567,7 +583,13 @@ pub extern "C" fn payload_extract_partition(
             Some(Box::new(move |progress| wrapper.call(progress)) as ProgressCallback)
         };
 
-        match extract_partition(payload_str, partition_str, output_str, progress_cb) {
+        match extract_partition(
+            payload_str,
+            partition_str,
+            output_str,
+            progress_cb,
+            source_dir_str,
+        ) {
             Ok(()) => 0,
             Err(e) => {
                 set_last_error(format!("Extraction failed: {}", e));
@@ -594,6 +616,7 @@ pub extern "C" fn payload_extract_partition(
 /// @param output_path Path where the partition image will be written
 /// @param callback Optional progress callback (pass NULL for no callback)
 /// @param user_data User data passed to callback (can be NULL)
+/// @param source_dir: Source dir where original image is stored ( for differential ota operations )
 /// @return 0 on success, -1 on failure (check payload_get_last_error())
 ///
 /// this function can be safely called from multiple threads concurrently.
@@ -615,6 +638,7 @@ pub extern "C" fn payload_extract_partition_zip(
     output_path: *const c_char,
     callback: CProgressCallback, // function pointer (use NULL-equivalent cast from C side)
     user_data: *mut c_void,
+    source_dir: *const c_char,
 ) -> i32 {
     clear_last_error();
 
@@ -663,6 +687,20 @@ pub extern "C" fn payload_extract_partition_zip(
             }
         };
 
+        let source_dir_str = if source_dir.is_null() {
+            None
+        } else {
+            unsafe {
+                match CStr::from_ptr(source_dir).to_str() {
+                    Ok(s) => Some(s),
+                    Err(e) => {
+                        set_last_error(format!("Invalid UTF-8 in source_dir: {}", e));
+                        return -1;
+                    }
+                }
+            }
+        };
+
         // check if callback is null by comparing function pointer to null cast
         let progress_cb: Option<ProgressCallback> = if callback as usize == 0 {
             None
@@ -675,7 +713,13 @@ pub extern "C" fn payload_extract_partition_zip(
             Some(Box::new(move |progress| wrapper.call(progress)) as ProgressCallback)
         };
 
-        match extract_partition_zip(zip_str, partition_str, output_str, progress_cb) {
+        match extract_partition_zip(
+            zip_str,
+            partition_str,
+            output_str,
+            progress_cb,
+            source_dir_str,
+        ) {
             Ok(()) => 0,
             Err(e) => {
                 set_last_error(format!("Extraction from ZIP failed: {}", e));
@@ -704,6 +748,7 @@ pub extern "C" fn payload_extract_partition_zip(
 /// @param cookies Optional cookie string (pass NULL for default)
 /// @param callback Optional progress callback (pass NULL for no callback)
 /// @param user_data User data passed to callback (can be NULL)
+/// @param source_dir: Source dir where original image is stored ( for differential ota operations )
 /// @return 0 on success, -1 on failure (check payload_get_last_error())
 ///
 /// this function can be safely called from multiple threads concurrently.
@@ -728,6 +773,7 @@ pub extern "C" fn payload_extract_partition_remote_zip(
     cookies: *const c_char,
     callback: CProgressCallback,
     user_data: *mut c_void,
+    source_dir: *const c_char,
 ) -> i32 {
     clear_last_error();
 
@@ -772,6 +818,20 @@ pub extern "C" fn payload_extract_partition_remote_zip(
                 Err(e) => {
                     set_last_error(format!("Invalid UTF-8 in output_path: {}", e));
                     return -1;
+                }
+            }
+        };
+
+        let source_dir_str = if source_dir.is_null() {
+            None
+        } else {
+            unsafe {
+                match CStr::from_ptr(source_dir).to_str() {
+                    Ok(s) => Some(s),
+                    Err(e) => {
+                        set_last_error(format!("Invalid UTF-8 in source_dir: {}", e));
+                        return -1;
+                    }
                 }
             }
         };
@@ -823,6 +883,7 @@ pub extern "C" fn payload_extract_partition_remote_zip(
             user_agent_str,
             cookies_str,
             progress_cb,
+            source_dir_str,
         ) {
             Ok(()) => 0,
             Err(e) => {
@@ -852,6 +913,7 @@ pub extern "C" fn payload_extract_partition_remote_zip(
 /// @param cookies Optional cookie string (pass NULL for default)
 /// @param callback Optional progress callback (pass NULL for no callback)
 /// @param user_data User data passed to callback (can be NULL)
+/// @param source_dir: Source dir where original image is stored ( for differential ota operations )
 /// @return 0 on success, -1 on failure (check payload_get_last_error())
 ///
 /// this function can be safely called from multiple threads concurrently.
@@ -876,6 +938,7 @@ pub extern "C" fn payload_extract_partition_remote_bin(
     cookies: *const c_char,
     callback: CProgressCallback,
     user_data: *mut c_void,
+    source_dir: *const c_char,
 ) -> i32 {
     clear_last_error();
 
@@ -920,6 +983,20 @@ pub extern "C" fn payload_extract_partition_remote_bin(
                 Err(e) => {
                     set_last_error(format!("Invalid UTF-8 in output_path: {}", e));
                     return -1;
+                }
+            }
+        };
+
+        let source_dir_str = if source_dir.is_null() {
+            None
+        } else {
+            unsafe {
+                match CStr::from_ptr(source_dir).to_str() {
+                    Ok(s) => Some(s),
+                    Err(e) => {
+                        set_last_error(format!("Invalid UTF-8 in source_dir: {}", e));
+                        return -1;
+                    }
                 }
             }
         };
@@ -971,6 +1048,7 @@ pub extern "C" fn payload_extract_partition_remote_bin(
             user_agent_str,
             cookies_str,
             progress_cb,
+            source_dir_str,
         ) {
             Ok(()) => 0,
             Err(e) => {

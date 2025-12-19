@@ -76,7 +76,7 @@ chrono      = "0.4.42"
 prost-build = "0.14.1"
 
 [features]
-default = ["local_zip", "remote_zip", "prefetch"]
+default = ["local_zip", "remote_zip", "prefetch", "diff_ota"]
 local_zip = []
 remote_zip = ["local_zip", "dep:reqwest", "dep:tokio-util"]
 hickory_dns = [
@@ -88,7 +88,6 @@ hickory_dns = [
 diff_ota = ["dep:bsdiff", "async-compression/lz4", "async-compression/brotli"]
 prefetch = ["remote_zip", "dep:tempfile"]
 capi = []
-bsdiff = ["dep:bsdiff"]
 
 [package.metadata.capi.header]
 name = "payload_dumper"
