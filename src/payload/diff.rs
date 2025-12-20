@@ -139,18 +139,32 @@ impl DiffContext {
     }
 }
 
+pub struct DiffOperationParams<'a> {
+    pub operation_index: usize,
+    pub op: &'a InstallOperation,
+    pub ctx: &'a DiffContext,
+    pub partition_name: &'a str,
+    pub source_file: &'a mut File,
+    pub out_file: &'a mut File,
+    pub payload_reader: &'a mut dyn PayloadReader,
+    pub data_offset: u64,
+    pub reporter: &'a dyn ProgressReporter,
+}
+
 #[cfg(feature = "diff_ota")]
-pub async fn process_diff_operation(
-    operation_index: usize,
-    op: &InstallOperation,
-    ctx: &DiffContext,
-    partition_name: &str,
-    source_file: &mut File,
-    out_file: &mut File,
-    payload_reader: &mut dyn PayloadReader,
-    data_offset: u64,
-    reporter: &dyn ProgressReporter,
-) -> Result<()> {
+pub async fn process_diff_operation(params: DiffOperationParams<'_>) -> Result<()> {
+    let DiffOperationParams {
+        operation_index,
+        op,
+        ctx,
+        partition_name,
+        source_file,
+        out_file,
+        payload_reader,
+        data_offset,
+        reporter,
+    } = params;
+
     match op.r#type() {
         install_operation::Type::SourceCopy => {
             let source_data = ctx

@@ -21,7 +21,7 @@ use crate::extractor::remote::{
 /* Error Handling */
 
 thread_local! {
-    static LAST_ERROR: std::cell::RefCell<Option<CString>> = std::cell::RefCell::new(None);
+    static LAST_ERROR: std::cell::RefCell<Option<CString>> = const { std::cell::RefCell::new(None) };
 }
 
 fn set_last_error(err: String) {
@@ -41,8 +41,13 @@ fn clear_last_error() {
 /// the returned string is valid until the next call from the same thread
 ///
 /// point: errors are thread-local. Each thread maintains its own error state.
+///
+/// # Safety
+/// This function is safe to call from any thread. The returned pointer is valid
+/// until the next call to any library function from the same thread that might
+/// set an error. The caller must not free the returned pointer.
 #[unsafe(no_mangle)]
-pub extern "C" fn payload_get_last_error() -> *const c_char {
+pub unsafe extern "C" fn payload_get_last_error() -> *const c_char {
     LAST_ERROR.with(|last| {
         last.borrow()
             .as_ref()
@@ -52,16 +57,26 @@ pub extern "C" fn payload_get_last_error() -> *const c_char {
 }
 
 /// clear the last error
+///
+/// # Safety
+/// This function is safe to call from any thread. It only affects the error
+/// state of the calling thread.
 #[unsafe(no_mangle)]
-pub extern "C" fn payload_clear_error() {
+pub unsafe extern "C" fn payload_clear_error() {
     clear_last_error();
 }
 
 /* String Handling */
 
 /// free a string allocated by this library
+///
+/// # Safety
+/// The caller must ensure that:
+/// - `s` is either NULL or a pointer previously returned by a library function
+/// - `s` has not been freed before
+/// - `s` is not used after this call
 #[unsafe(no_mangle)]
-pub extern "C" fn payload_free_string(s: *mut c_char) {
+pub unsafe extern "C" fn payload_free_string(s: *mut c_char) {
     if !s.is_null() {
         unsafe {
             drop(CString::from_raw(s));
@@ -84,8 +99,14 @@ pub extern "C" fn payload_free_string(s: *mut c_char) {
 ///   "total_size_readable": "4.66 GB",
 ///   "security_patch_level": "2025-12-05" // optional, present only if available in payload
 /// }
+///
+/// # Safety
+/// The caller must ensure that:
+/// - `payload_path` is a valid null-terminated UTF-8 string
+/// - `payload_path` remains valid for the duration of this call
+/// - The returned string is freed with `payload_free_string()` when no longer needed
 #[unsafe(no_mangle)]
-pub extern "C" fn payload_list_partitions(payload_path: *const c_char) -> *mut c_char {
+pub unsafe extern "C" fn payload_list_partitions(payload_path: *const c_char) -> *mut c_char {
     clear_last_error();
 
     let result = panic::catch_unwind(|| {
@@ -135,8 +156,14 @@ pub extern "C" fn payload_list_partitions(payload_path: *const c_char) -> *mut c
 /// the caller must free the returned string with payload_free_string()
 ///
 /// the returned JSON format is the same as payload_list_partitions()
+///
+/// # Safety
+/// The caller must ensure that:
+/// - `zip_path` is a valid null-terminated UTF-8 string
+/// - `zip_path` remains valid for the duration of this call
+/// - The returned string is freed with `payload_free_string()` when no longer needed
 #[unsafe(no_mangle)]
-pub extern "C" fn payload_list_partitions_zip(zip_path: *const c_char) -> *mut c_char {
+pub unsafe extern "C" fn payload_list_partitions_zip(zip_path: *const c_char) -> *mut c_char {
     clear_last_error();
 
     let result = panic::catch_unwind(|| {
@@ -195,9 +222,18 @@ pub extern "C" fn payload_list_partitions_zip(zip_path: *const c_char) -> *mut c
 /// if out_content_length is not NULL, it will be filled with the remote file size
 /// Cookies must be provided as a raw HTTP "Cookie" header value
 /// (for example "key1=value1; key2=value2")
+///
+/// # Safety
+/// The caller must ensure that:
+/// - `url` is a valid null-terminated UTF-8 string
+/// - `user_agent` is either NULL or a valid null-terminated UTF-8 string
+/// - `cookies` is either NULL or a valid null-terminated UTF-8 string
+/// - `out_content_length` is either NULL or points to valid memory
+/// - All string pointers remain valid for the duration of this call
+/// - The returned string is freed with `payload_free_string()` when no longer needed
 #[cfg(feature = "remote_zip")]
 #[unsafe(no_mangle)]
-pub extern "C" fn payload_list_partitions_remote_zip(
+pub unsafe extern "C" fn payload_list_partitions_remote_zip(
     url: *const c_char,
     user_agent: *const c_char,
     cookies: *const c_char,
@@ -296,9 +332,18 @@ pub extern "C" fn payload_list_partitions_remote_zip(
 ///
 /// the returned JSON format is the same as payload_list_partitions()
 /// if out_content_length is not NULL, it will be filled with the remote file size
+///
+/// # Safety
+/// The caller must ensure that:
+/// - `url` is a valid null-terminated UTF-8 string
+/// - `user_agent` is either NULL or a valid null-terminated UTF-8 string
+/// - `cookies` is either NULL or a valid null-terminated UTF-8 string
+/// - `out_content_length` is either NULL or points to valid memory
+/// - All string pointers remain valid for the duration of this call
+/// - The returned string is freed with `payload_free_string()` when no longer needed
 #[cfg(feature = "remote_zip")]
 #[unsafe(no_mangle)]
-pub extern "C" fn payload_list_partitions_remote_bin(
+pub unsafe extern "C" fn payload_list_partitions_remote_bin(
     url: *const c_char,
     user_agent: *const c_char,
     cookies: *const c_char,
@@ -500,272 +545,18 @@ impl CCallbackWrapper {
 /// - Return 0 from the callback to cancel extraction
 /// - Return non-zero to continue
 /// - cancellation may not be immediate
-#[unsafe(no_mangle)]
-pub extern "C" fn payload_extract_partition(
-    payload_path: *const c_char,
-    partition_name: *const c_char,
-    output_path: *const c_char,
-    callback: CProgressCallback, // function pointer (use NULL-equivalent cast from C side)
-    user_data: *mut c_void,
-    source_dir: *const c_char,
-) -> i32 {
-    clear_last_error();
-
-    let result = panic::catch_unwind(|| {
-        // validate inputs
-        if payload_path.is_null() {
-            set_last_error("payload_path is NULL".to_string());
-            return -1;
-        }
-        if partition_name.is_null() {
-            set_last_error("partition_name is NULL".to_string());
-            return -1;
-        }
-        if output_path.is_null() {
-            set_last_error("output_path is NULL".to_string());
-            return -1;
-        }
-
-        // convert C strings
-        let payload_str = unsafe {
-            match CStr::from_ptr(payload_path).to_str() {
-                Ok(s) => s,
-                Err(e) => {
-                    set_last_error(format!("Invalid UTF-8 in payload_path: {}", e));
-                    return -1;
-                }
-            }
-        };
-
-        let partition_str = unsafe {
-            match CStr::from_ptr(partition_name).to_str() {
-                Ok(s) => s,
-                Err(e) => {
-                    set_last_error(format!("Invalid UTF-8 in partition_name: {}", e));
-                    return -1;
-                }
-            }
-        };
-
-        let output_str = unsafe {
-            match CStr::from_ptr(output_path).to_str() {
-                Ok(s) => s,
-                Err(e) => {
-                    set_last_error(format!("Invalid UTF-8 in output_path: {}", e));
-                    return -1;
-                }
-            }
-        };
-
-        let source_dir_str = if source_dir.is_null() {
-            None
-        } else {
-            unsafe {
-                match CStr::from_ptr(source_dir).to_str() {
-                    Ok(s) => Some(s),
-                    Err(e) => {
-                        set_last_error(format!("Invalid UTF-8 in source_dir: {}", e));
-                        return -1;
-                    }
-                }
-            }
-        };
-
-        // check if callback is null by comparing function pointer to null cast
-        let progress_cb: Option<ProgressCallback> = if callback as usize == 0 {
-            None
-        } else {
-            let wrapper = Arc::new(CCallbackWrapper {
-                callback,
-                user_data,
-            });
-
-            Some(Box::new(move |progress| wrapper.call(progress)) as ProgressCallback)
-        };
-
-        match extract_partition(
-            payload_str,
-            partition_str,
-            output_str,
-            progress_cb,
-            source_dir_str,
-        ) {
-            Ok(()) => 0,
-            Err(e) => {
-                set_last_error(format!("Extraction failed: {}", e));
-                -1
-            }
-        }
-    });
-
-    match result {
-        Ok(code) => code,
-        Err(_) => {
-            set_last_error("Panic occurred in payload_extract_partition".to_string());
-            -1
-        }
-    }
-}
-
-/* Extract Partition API (ZIP file) */
-
-/// extract a single partition from a ZIP file containing payload.bin
 ///
-/// @param zip_path Path to the ZIP file containing payload.bin
-/// @param partition_name Name of the partition to extract
-/// @param output_path Path where the partition image will be written
-/// @param callback Optional progress callback (pass NULL for no callback)
-/// @param user_data User data passed to callback (can be NULL)
-/// @param source_dir: Source dir where original image is stored ( for differential ota operations )
-/// @return 0 on success, -1 on failure (check payload_get_last_error())
-///
-/// this function can be safely called from multiple threads concurrently.
-/// each thread can extract a different partition in parallel.
-///
-/// - pass NULL for callback parameter if you don't want progress updates
-/// - the partition_name and warning_message pointers passed to the callback
-///   are ONLY valid during the callback execution. Do NOT store these pointers.
-/// - if you need to keep the strings, copy them immediately in the callback.
-/// - Do NOT call free() on these strings, they are managed by the library.
-///
-/// - Return 0 from the callback to cancel extraction
-/// - Return non-zero to continue
-/// - Cancellation may not be immediate
-#[unsafe(no_mangle)]
-pub extern "C" fn payload_extract_partition_zip(
-    zip_path: *const c_char,
-    partition_name: *const c_char,
-    output_path: *const c_char,
-    callback: CProgressCallback, // function pointer (use NULL-equivalent cast from C side)
-    user_data: *mut c_void,
-    source_dir: *const c_char,
-) -> i32 {
-    clear_last_error();
-
-    let result = panic::catch_unwind(|| {
-        // validate inputs
-        if zip_path.is_null() {
-            set_last_error("zip_path is NULL".to_string());
-            return -1;
-        }
-        if partition_name.is_null() {
-            set_last_error("partition_name is NULL".to_string());
-            return -1;
-        }
-        if output_path.is_null() {
-            set_last_error("output_path is NULL".to_string());
-            return -1;
-        }
-
-        let zip_str = unsafe {
-            match CStr::from_ptr(zip_path).to_str() {
-                Ok(s) => s,
-                Err(e) => {
-                    set_last_error(format!("Invalid UTF-8 in zip_path: {}", e));
-                    return -1;
-                }
-            }
-        };
-
-        let partition_str = unsafe {
-            match CStr::from_ptr(partition_name).to_str() {
-                Ok(s) => s,
-                Err(e) => {
-                    set_last_error(format!("Invalid UTF-8 in partition_name: {}", e));
-                    return -1;
-                }
-            }
-        };
-
-        let output_str = unsafe {
-            match CStr::from_ptr(output_path).to_str() {
-                Ok(s) => s,
-                Err(e) => {
-                    set_last_error(format!("Invalid UTF-8 in output_path: {}", e));
-                    return -1;
-                }
-            }
-        };
-
-        let source_dir_str = if source_dir.is_null() {
-            None
-        } else {
-            unsafe {
-                match CStr::from_ptr(source_dir).to_str() {
-                    Ok(s) => Some(s),
-                    Err(e) => {
-                        set_last_error(format!("Invalid UTF-8 in source_dir: {}", e));
-                        return -1;
-                    }
-                }
-            }
-        };
-
-        // check if callback is null by comparing function pointer to null cast
-        let progress_cb: Option<ProgressCallback> = if callback as usize == 0 {
-            None
-        } else {
-            let wrapper = Arc::new(CCallbackWrapper {
-                callback,
-                user_data,
-            });
-
-            Some(Box::new(move |progress| wrapper.call(progress)) as ProgressCallback)
-        };
-
-        match extract_partition_zip(
-            zip_str,
-            partition_str,
-            output_str,
-            progress_cb,
-            source_dir_str,
-        ) {
-            Ok(()) => 0,
-            Err(e) => {
-                set_last_error(format!("Extraction from ZIP failed: {}", e));
-                -1
-            }
-        }
-    });
-
-    match result {
-        Ok(code) => code,
-        Err(_) => {
-            set_last_error("Panic occurred in payload_extract_partition_zip".to_string());
-            -1
-        }
-    }
-}
-
-/* Extract Partition API (Remote ZIP) */
-
-/// extract a single partition from a remote ZIP file containing payload.bin
-///
-/// @param url URL to the remote ZIP file
-/// @param partition_name Name of the partition to extract
-/// @param output_path Path where the partition image will be written
-/// @param user_agent Optional user agent string (pass NULL for default)
-/// @param cookies Optional cookie string (pass NULL for default)
-/// @param callback Optional progress callback (pass NULL for no callback)
-/// @param user_data User data passed to callback (can be NULL)
-/// @param source_dir: Source dir where original image is stored ( for differential ota operations )
-/// @return 0 on success, -1 on failure (check payload_get_last_error())
-///
-/// this function can be safely called from multiple threads concurrently.
-/// each thread can extract a different partition in parallel.
-///
-/// - pass NULL for callback parameter if you don't want progress updates
-/// - the partition_name and warning_message pointers passed to the callback
-///   are ONLY valid during the callback execution. Do NOT store these pointers.
-/// - if you need to keep the strings, copy them immediately in the callback.
-/// - Do NOT call free() on these strings, they are managed by the library.
-///
-/// - Return 0 from the callback to cancel extraction
-/// - Return non-zero to continue
-/// - Cancellation may not be immediate
+/// # Safety
+/// The caller must ensure that:
+/// - `payload_path`, `partition_name`, and `output_path` are valid null-terminated UTF-8 strings
+/// - `source_dir` is either NULL or a valid null-terminated UTF-8 string
+/// - All string pointers remain valid for the duration of this call
+/// - `callback` is either NULL or a valid function pointer
+/// - `user_data` remains valid if accessed by the callback
+/// - If `user_data` points to non-thread-safe data, extraction is not called concurrently
 #[cfg(feature = "remote_zip")]
 #[unsafe(no_mangle)]
-pub extern "C" fn payload_extract_partition_remote_zip(
+pub unsafe extern "C" fn payload_extract_partition_remote_zip(
     url: *const c_char,
     partition_name: *const c_char,
     output_path: *const c_char,
@@ -928,9 +719,18 @@ pub extern "C" fn payload_extract_partition_remote_zip(
 /// - Return 0 from the callback to cancel extraction
 /// - Return non-zero to continue
 /// - Cancellation may not be immediate
+///
+/// # Safety
+/// The caller must ensure that:
+/// - `url`, `partition_name`, and `output_path` are valid null-terminated UTF-8 strings
+/// - `user_agent`, `cookies`, and `source_dir` are either NULL or valid null-terminated UTF-8 strings
+/// - All string pointers remain valid for the duration of this call
+/// - `callback` is either NULL or a valid function pointer
+/// - `user_data` remains valid if accessed by the callback
+/// - If `user_data` points to non-thread-safe data, extraction is not called concurrently
 #[cfg(feature = "remote_zip")]
 #[unsafe(no_mangle)]
-pub extern "C" fn payload_extract_partition_remote_bin(
+pub unsafe extern "C" fn payload_extract_partition_remote_bin(
     url: *const c_char,
     partition_name: *const c_char,
     output_path: *const c_char,
@@ -1071,8 +871,12 @@ pub extern "C" fn payload_extract_partition_remote_bin(
 
 /// get library version
 /// returns a static string, do not free
+///
+/// # Safety
+/// This function is always safe to call. The returned pointer points to static
+/// data and remains valid for the lifetime of the program.
 #[unsafe(no_mangle)]
-pub extern "C" fn payload_get_version() -> *const c_char {
+pub unsafe extern "C" fn payload_get_version() -> *const c_char {
     static C_VERSION: &[u8] = concat!(env!("CARGO_PKG_VERSION"), "\0").as_bytes();
     C_VERSION.as_ptr() as *const c_char
 }
@@ -1080,8 +884,13 @@ pub extern "C" fn payload_get_version() -> *const c_char {
 /// initialize the library (optional, but recommended for thread safety)
 /// should be called once before any other library functions
 /// @return 0 on success, -1 on failure
+///
+/// # Safety
+/// This function should be called once before using the library, ideally from
+/// the main thread before spawning other threads. It is safe to call multiple
+/// times but provides no benefit.
 #[unsafe(no_mangle)]
-pub extern "C" fn payload_init() -> i32 {
+pub unsafe extern "C" fn payload_init() -> i32 {
     // not yet implemented idk
     0
 }
@@ -1089,7 +898,279 @@ pub extern "C" fn payload_init() -> i32 {
 /// cleanup library resources
 /// should be called once when done using the library
 /// no library functions should be called after this
+///
+/// # Safety
+/// After calling this function, no other library functions should be called.
+/// Any pointers obtained from the library (including error messages and returned
+/// strings) become invalid and must not be used.
 #[unsafe(no_mangle)]
-pub extern "C" fn payload_cleanup() {
+pub unsafe extern "C" fn payload_cleanup() {
     // not yet implemented idk
+}
+
+/// extract a single partition from a payload.bin file
+///
+/// @param payload_path Path to the payload.bin file
+/// @param partition_name Name of the partition to extract
+/// @param output_path Path where the partition image will be written
+/// @param callback Optional progress callback (pass NULL for no callback)
+/// @param user_data User data passed to callback (can be NULL)
+/// @param source_dir: Source dir where original image is stored ( for differential ota operations )
+/// @return 0 on success, -1 on failure (check payload_get_last_error())
+///
+/// # Safety
+/// - This function can be safely called from multiple threads concurrently.
+/// - Each thread can extract a different partition in parallel.
+/// - pass NULL for callback parameter if you don't want progress updates
+/// - the partition_name and warning_message pointers passed to the callback
+///   are ONLY valid during the callback execution. Do NOT store these pointers.
+/// - If you need to keep the strings, copy them immediately in the callback.
+/// - do NOT call free() on these strings, they are managed by the library.
+/// - Return 0 from the callback to cancel extraction
+/// - Return non-zero to continue
+/// - cancellation may not be immediate
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn payload_extract_partition(
+    payload_path: *const c_char,
+    partition_name: *const c_char,
+    output_path: *const c_char,
+    callback: CProgressCallback, // function pointer (use NULL-equivalent cast from C side)
+    user_data: *mut c_void,
+    source_dir: *const c_char,
+) -> i32 {
+    clear_last_error();
+
+    let result = panic::catch_unwind(|| {
+        // validate inputs
+        if payload_path.is_null() {
+            set_last_error("payload_path is NULL".to_string());
+            return -1;
+        }
+        if partition_name.is_null() {
+            set_last_error("partition_name is NULL".to_string());
+            return -1;
+        }
+        if output_path.is_null() {
+            set_last_error("output_path is NULL".to_string());
+            return -1;
+        }
+
+        // convert C strings
+        let payload_str = unsafe {
+            match CStr::from_ptr(payload_path).to_str() {
+                Ok(s) => s,
+                Err(e) => {
+                    set_last_error(format!("Invalid UTF-8 in payload_path: {}", e));
+                    return -1;
+                }
+            }
+        };
+
+        let partition_str = unsafe {
+            match CStr::from_ptr(partition_name).to_str() {
+                Ok(s) => s,
+                Err(e) => {
+                    set_last_error(format!("Invalid UTF-8 in partition_name: {}", e));
+                    return -1;
+                }
+            }
+        };
+
+        let output_str = unsafe {
+            match CStr::from_ptr(output_path).to_str() {
+                Ok(s) => s,
+                Err(e) => {
+                    set_last_error(format!("Invalid UTF-8 in output_path: {}", e));
+                    return -1;
+                }
+            }
+        };
+
+        let source_dir_str = if source_dir.is_null() {
+            None
+        } else {
+            unsafe {
+                match CStr::from_ptr(source_dir).to_str() {
+                    Ok(s) => Some(s),
+                    Err(e) => {
+                        set_last_error(format!("Invalid UTF-8 in source_dir: {}", e));
+                        return -1;
+                    }
+                }
+            }
+        };
+
+        // check if callback is null by comparing function pointer to null cast
+        let progress_cb: Option<ProgressCallback> = if callback as usize == 0 {
+            None
+        } else {
+            let wrapper = Arc::new(CCallbackWrapper {
+                callback,
+                user_data,
+            });
+
+            Some(Box::new(move |progress| wrapper.call(progress)) as ProgressCallback)
+        };
+
+        match extract_partition(
+            payload_str,
+            partition_str,
+            output_str,
+            progress_cb,
+            source_dir_str,
+        ) {
+            Ok(()) => 0,
+            Err(e) => {
+                set_last_error(format!("Extraction failed: {}", e));
+                -1
+            }
+        }
+    });
+
+    match result {
+        Ok(code) => code,
+        Err(_) => {
+            set_last_error("Panic occurred in payload_extract_partition".to_string());
+            -1
+        }
+    }
+}
+
+/* Extract Partition API (ZIP file) */
+
+/// extract a single partition from a ZIP file containing payload.bin
+///
+/// @param zip_path Path to the ZIP file containing payload.bin
+/// @param partition_name Name of the partition to extract
+/// @param output_path Path where the partition image will be written
+/// @param callback Optional progress callback (pass NULL for no callback)
+/// @param user_data User data passed to callback (can be NULL)
+/// @param source_dir: Source dir where original image is stored ( for differential ota operations )
+/// @return 0 on success, -1 on failure (check payload_get_last_error())
+///
+/// this function can be safely called from multiple threads concurrently.
+/// each thread can extract a different partition in parallel.
+///
+/// - pass NULL for callback parameter if you don't want progress updates
+/// - the partition_name and warning_message pointers passed to the callback
+///   are ONLY valid during the callback execution. Do NOT store these pointers.
+/// - if you need to keep the strings, copy them immediately in the callback.
+/// - Do NOT call free() on these strings, they are managed by the library.
+///
+/// - Return 0 from the callback to cancel extraction
+/// - Return non-zero to continue
+/// - Cancellation may not be immediate
+///
+/// # Safety
+/// The caller must ensure that:
+/// - `zip_path`, `partition_name`, and `output_path` are valid null-terminated UTF-8 strings
+/// - `source_dir` is either NULL or a valid null-terminated UTF-8 string
+/// - All string pointers remain valid for the duration of this call
+/// - `callback` is either NULL or a valid function pointer
+/// - `user_data` remains valid if accessed by the callback
+/// - If `user_data` points to non-thread-safe data, extraction is not called concurrently
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn payload_extract_partition_zip(
+    zip_path: *const c_char,
+    partition_name: *const c_char,
+    output_path: *const c_char,
+    callback: CProgressCallback, // function pointer (use NULL-equivalent cast from C side)
+    user_data: *mut c_void,
+    source_dir: *const c_char,
+) -> i32 {
+    clear_last_error();
+
+    let result = panic::catch_unwind(|| {
+        // validate inputs
+        if zip_path.is_null() {
+            set_last_error("zip_path is NULL".to_string());
+            return -1;
+        }
+        if partition_name.is_null() {
+            set_last_error("partition_name is NULL".to_string());
+            return -1;
+        }
+        if output_path.is_null() {
+            set_last_error("output_path is NULL".to_string());
+            return -1;
+        }
+
+        let zip_str = unsafe {
+            match CStr::from_ptr(zip_path).to_str() {
+                Ok(s) => s,
+                Err(e) => {
+                    set_last_error(format!("Invalid UTF-8 in zip_path: {}", e));
+                    return -1;
+                }
+            }
+        };
+
+        let partition_str = unsafe {
+            match CStr::from_ptr(partition_name).to_str() {
+                Ok(s) => s,
+                Err(e) => {
+                    set_last_error(format!("Invalid UTF-8 in partition_name: {}", e));
+                    return -1;
+                }
+            }
+        };
+
+        let output_str = unsafe {
+            match CStr::from_ptr(output_path).to_str() {
+                Ok(s) => s,
+                Err(e) => {
+                    set_last_error(format!("Invalid UTF-8 in output_path: {}", e));
+                    return -1;
+                }
+            }
+        };
+
+        let source_dir_str = if source_dir.is_null() {
+            None
+        } else {
+            unsafe {
+                match CStr::from_ptr(source_dir).to_str() {
+                    Ok(s) => Some(s),
+                    Err(e) => {
+                        set_last_error(format!("Invalid UTF-8 in source_dir: {}", e));
+                        return -1;
+                    }
+                }
+            }
+        };
+
+        // check if callback is null by comparing function pointer to null cast
+        let progress_cb: Option<ProgressCallback> = if callback as usize == 0 {
+            None
+        } else {
+            let wrapper = Arc::new(CCallbackWrapper {
+                callback,
+                user_data,
+            });
+
+            Some(Box::new(move |progress| wrapper.call(progress)) as ProgressCallback)
+        };
+
+        match extract_partition_zip(
+            zip_str,
+            partition_str,
+            output_str,
+            progress_cb,
+            source_dir_str,
+        ) {
+            Ok(()) => 0,
+            Err(e) => {
+                set_last_error(format!("Extraction from ZIP failed: {}", e));
+                -1
+            }
+        }
+    });
+
+    match result {
+        Ok(code) => code,
+        Err(_) => {
+            set_last_error("Panic occurred in payload_extract_partition_zip".to_string());
+            -1
+        }
+    }
 }

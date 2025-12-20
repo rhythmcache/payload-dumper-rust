@@ -57,7 +57,7 @@ async-compression = { version = "0.4.36", features = [
 async-trait = "0.1.89"
 tokio-util = { version = "0.7.17", features = ["io"], optional = true }
 url = "2.5.7"
-reqwest = { version = "0.12.25", features = [
+reqwest = { version = "0.12.26", features = [
     "rustls-tls-webpki-roots",
     "stream",
     "gzip",

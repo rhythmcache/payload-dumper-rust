@@ -16,7 +16,7 @@ pub use crate::structs::PartitionUpdate;
 use crate::structs::{InstallOperation, install_operation};
 
 #[cfg(feature = "diff_ota")]
-use crate::payload::diff::{DiffContext, process_diff_operation};
+use crate::payload::diff::{DiffContext, DiffOperationParams, process_diff_operation};
 use crate::utils::is_diff_operation;
 
 const BUFREADER_SIZE: usize = 64 * 1024; // 64 KB for BufReader (decompression streams)
@@ -231,17 +231,17 @@ async fn process_operation_streaming(
                 if let (Some(diff_ctx), Some(source_file)) =
                     (ctx.diff_ctx, ctx.source_file.as_mut())
                 {
-                    process_diff_operation(
+                    process_diff_operation(DiffOperationParams {
                         operation_index,
                         op,
-                        diff_ctx,
+                        ctx: diff_ctx,
                         partition_name,
                         source_file,
-                        ctx.out_file,
-                        ctx.payload_reader,
-                        ctx.data_offset,
+                        out_file: ctx.out_file,
+                        payload_reader: ctx.payload_reader,
+                        data_offset: ctx.data_offset,
                         reporter,
-                    )
+                    })
                     .await?;
                 } else {
                     return Err(anyhow!(

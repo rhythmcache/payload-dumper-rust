@@ -92,10 +92,9 @@ impl DownloadProgressReporter for NoOpDownloadReporter {
 }
 
 /// download partition data from HTTP to a temporary file
-///
 /// # arguments
 /// * `payload_offset` - offset where payload.bin starts in the file (0 for .bin, non-zero for ZIP)
-
+///
 /// download partition data from HTTP to a temporary file (STREAMING VERSION)
 async fn download_partition_data(
     http_reader: &HttpReader,
@@ -203,10 +202,8 @@ impl PayloadReader for OffsetTranslatingPayloadReader {
 }
 
 /// prefetch and extract a single partition
-///
 /// downloads the required data range from remote source to a temporary file,
 /// then extracts the partition using the standard dump_partition function.
-///
 /// # arguments
 /// * `partition` - the partition to extract
 /// * `config` - extraction configuration (data_offset, block_size, payload_offset)

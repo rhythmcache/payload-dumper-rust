@@ -155,7 +155,7 @@ fn compile_protos() {
             "cargo:warning=Proto file not found at {}, using pre-compiled version",
             proto_file
         );
-        copy_precompiled_to_out(&precompiled, &out_file);
+        copy_precompiled_to_out(precompiled, &out_file);
         return;
     }
 
@@ -168,7 +168,7 @@ fn compile_protos() {
 
     if !protoc_available {
         println!("cargo:warning=protoc command not found, using pre-compiled version");
-        copy_precompiled_to_out(&precompiled, &out_file);
+        copy_precompiled_to_out(precompiled, &out_file);
         return;
     }
 
@@ -190,7 +190,7 @@ fn compile_protos() {
                 "cargo:warning=Failed to compile protobuf: {}. Using pre-compiled version.",
                 e
             );
-            copy_precompiled_to_out(&precompiled, &out_file);
+            copy_precompiled_to_out(precompiled, &out_file);
         }
     }
 }

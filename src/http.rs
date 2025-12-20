@@ -85,14 +85,14 @@ async fn create_http_client(user_agent: Option<&str>, cookies: Option<&str>) -> 
             .map_err(|e| anyhow!("Invalid user agent string: {}", e))?,
     );
 
-    if let Some(cookie_str) = cookies {
-        if !cookie_str.is_empty() {
-            headers.insert(
-                header::COOKIE,
-                header::HeaderValue::from_str(cookie_str)
-                    .map_err(|e| anyhow!("Invalid cookie string: {}", e))?,
-            );
-        }
+    if let Some(cookie_str) = cookies
+        && !cookie_str.is_empty()
+    {
+        headers.insert(
+            header::COOKIE,
+            header::HeaderValue::from_str(cookie_str)
+                .map_err(|e| anyhow!("Invalid cookie string: {}", e))?,
+        );
     }
 
     let mut client_builder = Client::builder()
