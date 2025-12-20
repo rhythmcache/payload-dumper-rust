@@ -220,38 +220,22 @@ pub async fn process_diff_operation(
             let patch_length = op.data_length.unwrap_or(0);
 
             if patch_length > MAX_OPERATION_SIZE as u64 {
-                return Err(anyhow!(
-                    "Compressed patch size {} exceeds safety limit",
-                    patch_length
-                ));
+                return Err(anyhow!("Patch size {} exceeds safety limit", patch_length));
             }
 
             let mut patch_stream = payload_reader
                 .read_range(patch_offset, patch_length)
                 .await
-                .context("Failed to read compressed patch data")?;
+                .context("Failed to read patch data")?;
 
-            let mut compressed_data = Vec::with_capacity(patch_length as usize);
+            let mut patch_data = Vec::with_capacity(patch_length as usize);
             patch_stream
-                .read_to_end(&mut compressed_data)
+                .read_to_end(&mut patch_data)
                 .await
-                .context("Failed to read compressed stream")?;
-
-            let mut patch_data = Vec::new();
-            let mut decompressor = brotli::Decompressor::new(&compressed_data[..], 4096);
-            std::io::Read::read_to_end(&mut decompressor, &mut patch_data)
-                .map_err(|e| anyhow!("Failed to decompress Brotli patch: {}", e))?;
-
-            if patch_data.len() > MAX_OPERATION_SIZE {
-                return Err(anyhow!(
-                    "Decompressed patch size {} exceeds safety limit",
-                    patch_data.len()
-                ));
-            }
-
+                .context("Failed to read patch stream")?;
             let mut patched_data = Vec::new();
             bsdiff_android::patch_bsdf2(&source_data, &patch_data, &mut patched_data)
-                .map_err(|e| anyhow!("Brotli-BSDF2 patch failed: {}", e))?;
+                .map_err(|e| anyhow!("BSDF2 patch failed: {}", e))?;
 
             let expected_size: u64 = op
                 .dst_extents
@@ -269,7 +253,7 @@ pub async fn process_diff_operation(
 
             ctx.write_dst_extents(out_file, &op.dst_extents, &patched_data)
                 .await
-                .context("Failed to write Brotli-patched data")?;
+                .context("Failed to write patched data")?;
         }
 
         install_operation::Type::Lz4diffBsdiff => {
