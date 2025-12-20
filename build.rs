@@ -59,8 +59,8 @@ fn main() {
     if env::var("CARGO_FEATURE_LOCAL_ZIP").is_ok() {
         features.push("local_zip");
     }
-    if env::var("CARGO_FEATURE_METADATA").is_ok() {
-        features.push("metadata");
+    if env::var("CARGO_FEATURE_DIFF_OTA").is_ok() {
+        features.push("diff_ota");
     }
     if env::var("CARGO_FEATURE_HICKORY_DNS").is_ok() {
         features.push("hickory_dns");

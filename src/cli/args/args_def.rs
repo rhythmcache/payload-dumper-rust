@@ -66,33 +66,51 @@ const VERSION_STRING: &str = concat!(
 )]
 #[command(next_line_help = true)]
 pub struct Args {
+    #[arg(
+        value_name = "PAYLOAD",
+        help = "Path to payload file or remote URL",
+        long_help = "Path to the Android OTA payload file. Can be a local path to a .bin file, \
+                     a .zip archive containing payload.bin, or a remote URL to download from"
+    )]
     pub payload_path: PathBuf,
 
     #[arg(
         short = 'o',
         long,
         default_value = "output",
-        help = "Output directory for extracted partitions"
+        value_name = "DIR",
+        help = "Directory to save extracted partitions"
     )]
     pub out: PathBuf,
 
     #[arg(
         long,
         default_value = "old",
-        help = "Directory containing source images for differential OTA operations",
-        long_help = "Directory containing source .img files for differential OTA operations.\n\
-                     Required when extracting incremental/differential updates.\n\
-                     Defaults to 'old' directory in current working directory."
+        value_name = "DIR",
+        help = "Directory containing source images for differential OTA",
+        long_help = "Path to directory containing the old partition images. Required for differential \
+                     (incremental) OTA updates that contain only the changes from a previous version. \
+                     The tool applies these delta operations to the old images to generate new ones. \
+                     Not needed for full OTA updates"
     )]
     pub source_dir: PathBuf,
 
     #[arg(
         short = 'U',
         long,
+        value_name = "AGENT",
         help = if cfg!(feature = "remote_zip") {
-            "Custom User-Agent string for HTTP requests (only used with remote URLs)"
+            "Custom User-Agent for HTTP requests"
         } else {
-            "Custom User-Agent string for HTTP requests [requires remote_zip feature]"
+            "Custom User-Agent for HTTP requests [requires remote_zip feature]"
+        },
+        long_help = if cfg!(feature = "remote_zip") {
+            "Custom User-Agent string to identify as when making HTTP requests. Some servers may \
+             block or rate-limit requests based on User-Agent, or require specific browser \
+             identification to serve files"
+        } else {
+            "Custom User-Agent string for HTTP requests. This feature requires compilation \
+             with --features remote_zip"
         },
         hide = cfg!(not(feature = "remote_zip"))
     )]
@@ -101,10 +119,19 @@ pub struct Args {
     #[arg(
         short = 'C',
         long,
+        value_name = "COOKIES",
         help = if cfg!(feature = "remote_zip") {
-            "Custom HTTP Cookie header value for remote requests (e.g. \"key1=value1; key2=value2\")"
+            "HTTP Cookie header for authenticated requests"
         } else {
-            "Custom HTTP Cookie header value [requires remote_zip feature]"
+            "HTTP Cookie header [requires remote_zip feature]"
+        },
+        long_help = if cfg!(feature = "remote_zip") {
+            "Custom HTTP Cookie header value for requests that require authentication or session \
+             management. Needed when downloading from servers that gate access behind login sessions \
+             or require specific cookie values for authorization"
+        } else {
+            "HTTP Cookie header for authenticated requests. This feature requires compilation \
+             with --features remote_zip"
         },
         hide = cfg!(not(feature = "remote_zip"))
     )]
@@ -115,8 +142,12 @@ pub struct Args {
         long,
         default_value = "",
         alias = "partitions",
+        value_name = "NAMES",
         hide_default_value = true,
-        help = "Comma-separated list of partition names to extract"
+        help = "Comma-separated list of partitions to extract",
+        long_help = "Extract only specific partitions instead of all available ones. \
+                     Provide partition names as a comma-separated list. Use --list to see \
+                     available partition names in the payload"
     )]
     pub images: String,
 
@@ -124,7 +155,12 @@ pub struct Args {
         short = 't',
         long,
         alias = "concurrency",
-        help = "Number of threads to use for parallel processing"
+        value_name = "COUNT",
+        help = "Number of threads for parallel extraction",
+        long_help = "Number of worker threads to use for concurrent partition extraction. \
+                     More threads can significantly speed up extraction on systems with fast \
+                     storage, but will use more memory and CPU resources. Automatically defaults \
+                     to twice the number of CPU cores, capped at 32"
     )]
     pub threads: Option<usize>,
 
@@ -132,7 +168,10 @@ pub struct Args {
         short = 'l',
         long,
         conflicts_with_all = &["images", "threads"],
-        help = "List available partitions in the payload"
+        help = "List available partitions and exit",
+        long_help = "Display all partitions present in the payload with their sizes and types, \
+                     then exit without extracting. Useful for inspecting OTA contents before \
+                     deciding which partitions to extract"
     )]
     pub list: bool,
 
@@ -143,26 +182,42 @@ pub struct Args {
         num_args = 0..=1,
         default_missing_value = "compact",
         require_equals = true,
-        help = "Save metadata as JSON. Use '--metadata=full' for detailed info including all operations",
-        long_help = "Save metadata as JSON:\n  \
-                     --metadata        Compact mode (default, ~100KB)\n  \
-                     --metadata=full   Full mode with all operation details (may be large)\n  \
-                     Can be combined with --images to export metadata for specific partitions only",
+        help = "Save payload metadata as JSON",
+        long_help = "Export payload metadata to a JSON file. Compact mode includes essential \
+                     information like partition names, sizes, and hashes. Full mode additionally \
+                     includes all low-level operation details, which can be very large but useful \
+                     for debugging or analysis. Can be combined with --images to export metadata \
+                     only for specific partitions"
     )]
     pub metadata: Option<String>,
 
-    #[arg(short = 'P', long, help = "Disable parallel extraction")]
+    #[arg(
+        short = 'P',
+        long,
+        help = "Disable parallel extraction",
+        long_help = "Process partitions sequentially instead of in parallel. Reduces memory usage \
+                     and CPU load at the cost of slower extraction time. Useful on resource-constrained \
+                     systems or when running alongside other intensive tasks"
+    )]
     pub no_parallel: bool,
 
-    #[arg(short = 'n', long, help = "Skip hash verification")]
+    #[arg(
+        short = 'n',
+        long,
+        help = "Skip hash verification of extracted partitions",
+        long_help = "Skip cryptographic hash verification after extraction. Verification ensures \
+                     extracted partitions match the expected checksums from the payload manifest. \
+                     Skipping saves time but risks using corrupted data if extraction or download errors occurred"
+    )]
     pub no_verify: bool,
 
     #[arg(
         long,
-        help = "Pre-download all partition data before extraction (only for remote URLs)",
-        long_help = "For remote URLs, download all required partition data to a temporary directory \
-                     before extraction. This eliminates per-operation network latency at the cost of \
-                     upfront download time. Most effective for slow/high-latency connections.",
+        help = "Pre-download all data before extraction (remote URLs only)",
+        long_help = "Download all required partition data to a temporary directory before starting \
+                     extraction. This eliminates network latency during per-operation processing, \
+                     trading upfront download time for faster overall extraction. Most beneficial \
+                     on slow or high-latency network connections. Only applicable to remote URLs",
         hide = cfg!(not(feature = "prefetch"))
     )]
     pub prefetch: bool,
@@ -170,7 +225,9 @@ pub struct Args {
     #[arg(
         short = 'q',
         long,
-        help = "Suppress all non-essential output (errors will still be shown)"
+        help = "Suppress non-essential output",
+        long_help = "Reduce output verbosity by suppressing progress indicators and informational \
+                     messages. Errors and warnings will still be displayed."
     )]
     pub quiet: bool,
 }

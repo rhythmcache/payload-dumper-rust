@@ -16,7 +16,6 @@ pub enum PayloadType {
     RemoteBin,
 }
 
-
 async fn read_sn(path: &Path) -> Result<[u8; 4]> {
     let mut file = File::open(path).await?;
     let mut magic = [0u8; 4];
@@ -26,11 +25,7 @@ async fn read_sn(path: &Path) -> Result<[u8; 4]> {
 
 /// reads magic bytes from a remote URL
 #[cfg(feature = "remote_zip")]
-async fn read_r_sn(
-    url: &str,
-    user_agent: Option<&str>,
-    cookies: Option<&str>,
-) -> Result<[u8; 4]> {
+async fn read_r_sn(url: &str, user_agent: Option<&str>, cookies: Option<&str>) -> Result<[u8; 4]> {
     use anyhow::Context;
     use payload_dumper::http::HttpReader;
 
@@ -48,7 +43,7 @@ async fn read_r_sn(
 }
 
 /// detects the payload file type (local/remote, zip/bin) by checking magic bytes
-/// 
+///
 /// this function always validates files using magic bytes rather than relying on
 /// file extensions, providing reliable file type detection even for files with
 /// incorrect or missing extensions.
@@ -58,7 +53,8 @@ pub async fn detect_payload_type(
     cookies: Option<&str>,
 ) -> Result<PayloadType> {
     let payload_path_str = payload_path.to_string_lossy().to_string();
-    let is_url = payload_path_str.starts_with("http://") || payload_path_str.starts_with("https://");
+    let is_url =
+        payload_path_str.starts_with("http://") || payload_path_str.starts_with("https://");
 
     // always check magic bytes, it's fast for local files and reliable for all cases
     let file_type = if is_url {
@@ -99,7 +95,7 @@ pub async fn detect_payload_type(
                 "Local ZIP processing requires the 'local_zip' feature. \
                  Please recompile with --features local_zip"
             ));
-            
+
             #[cfg(feature = "local_zip")]
             Ok(PayloadType::LocalZip)
         }
@@ -110,7 +106,7 @@ pub async fn detect_payload_type(
                 "Remote ZIP processing requires the 'remote_zip' feature. \
                  Please recompile with --features remote_zip"
             ));
-            
+
             #[cfg(feature = "remote_zip")]
             Ok(PayloadType::RemoteZip)
         }
@@ -120,7 +116,7 @@ pub async fn detect_payload_type(
                 "Remote BIN processing requires the 'remote_zip' feature. \
                  Please recompile with --features remote_zip"
             ));
-            
+
             #[cfg(feature = "remote_zip")]
             Ok(PayloadType::RemoteBin)
         }
