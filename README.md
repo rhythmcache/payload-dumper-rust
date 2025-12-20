@@ -13,6 +13,7 @@ Extracts partition images (boot, system, vendor, etc.) from Android OTA `payload
 - **Works with ZIP files** - Extract directly from ROM ZIPs without unzipping first
 - **URL support** - Extract from remote URLs, downloading only the needed data instead of the entire file
 - **Cross-platform** - Works on Linux, Windows, macOS, and Android (Termux)
+- **Incremental OTA** - Experimental Incremental OTA Support ( Not tested)
 
 ## Installation
 
@@ -68,6 +69,10 @@ payload_dumper https://example.com/ota.zip -o output
 ```bash
 payload_dumper payload.bin -i boot,vendor_boot -o output
 ```
+
+**Extract Incremental OTA:**
+- To extract an incremental OTA, create a directory named `old` in the current working directory and copy all images from the previous build into it.
+- If the old images are located elsewhere, specify their location using the `--source-dir <PATH>` argument.
 
 **List partitions without extracting:**
 ```bash
