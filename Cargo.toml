@@ -1,6 +1,6 @@
 [package]
 name        = "payload_dumper"
-version     = "0.8.1"
+version     = "0.8.2"
 edition     = "2024"
 authors     = ["rhythmcache"]
 description = "A fast and efficient Android OTA payload dumper library and CLI"
