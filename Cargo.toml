@@ -88,17 +88,6 @@ hickory_dns = [
 ]
 diff_ota = ["dep:bsdiff-android", "dep:lz4_flex"]
 prefetch = ["remote_zip", "dep:tempfile"]
-capi = []
-bsdiff-android = ["dep:bsdiff-android"]
-
-[package.metadata.capi.header]
-name = "payload_dumper"
-
-[package.metadata.capi.pkg_config]
-name = "payload_dumper"
-
-[package.metadata.capi.library]
-name = "payload_dumper"
 
 [profile.release]
 opt-level       = 3

@@ -2,10 +2,7 @@
 // Copyright (c) 2025 rhythmcache
 // https://github.com/rhythmcache/payload-dumper-rust
 
-#[cfg(feature = "capi")]
-pub mod capi;
 pub mod constants;
-pub mod extractor;
 #[cfg(feature = "remote_zip")]
 pub mod http;
 pub mod metadata;

@@ -225,35 +225,6 @@ export PAYLOAD_DUMPER_CUSTOM_DNS=8.8.8.8,4.4.4.4
 ---
 If you are unsure, use the default build. 
 
-
-## Library usage
-
-It also provides a few high level apis.
-
-project using this library:
-- **payload-dumper-gui**  
-  https://github.com/rhythmcache/payload-dumper-gui.git 
-
-
-### Rust API
-
-See
- - [src/extractor/local.rs](./src/extractor/local.rs)  
- - [src/extractor/remote.rs](./src/extractor/remote.rs)
-
-
-### C / C++ API convenience wrappers
-
-- C API header:  
-  [include/payload_dumper.h](./include/payload_dumper.h)
-- C++ wrapper header:  
-  [include/payload_dumper.hpp](./include/payload_dumper.hpp)
-
-For API documentation and function behavior, refer directly to the headers.
-
-You can regenerate C/C++ headers using **[cargo-c](https://github.com/lu-zero/cargo-c.git)** or **[cbindgen](https://github.com/mozilla/cbindgen.git)**.
-
-
 ## Troubleshooting
 
 **"Server doesn't support range requests"**  
