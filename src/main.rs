@@ -5,7 +5,8 @@
 mod cli;
 use cli::entry::run;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     if let Err(e) = run() {
         eprintln!("Error: {}", e);
         std::process::exit(1);
