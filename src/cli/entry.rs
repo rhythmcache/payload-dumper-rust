@@ -20,7 +20,6 @@ use crate::cli::ui::ui_print::UiOutput;
 use crate::cli::verification::validator::verify_extracted_partitions;
 use payload_dumper::utils::{format_elapsed_time, format_size};
 
-#[tokio::main]
 pub async fn run() -> Result<()> {
     let args = Args::parse();
 
