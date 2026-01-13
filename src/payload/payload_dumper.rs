@@ -317,7 +317,7 @@ pub async fn dump_partition<P: AsyncPayloadRead>(
             (Some(diff_ctx), Some(source_file))
         } else {
             return Err(anyhow!(
-                "Partition '{}' contains differential operations but no source directory provided. Use --source-dir option.",
+                "Partition '{}' contains differential operations but no source directory provided.",
                 partition_name
             ));
         }
