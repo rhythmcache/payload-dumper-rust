@@ -19,8 +19,10 @@ use crate::structs::{InstallOperation, install_operation};
 use crate::payload::diff::{DiffContext, DiffOperationParams, process_diff_operation};
 use crate::utils::is_diff_operation;
 
-const BUFREADER_SIZE: usize = 64 * 1024; // 64 KB for BufReader (decompression streams)
-const COPY_BUFFER_SIZE: usize = 128 * 1024; // 128 KB for direct copy operations
+// Increased buffer sizes for better throughput
+const BUFREADER_SIZE: usize = 256 * 1024; // 256 KB for decompression streams
+const COPY_BUFFER_SIZE: usize = 512 * 1024; // 512 KB for direct copy operations
+const ZERO_WRITE_CHUNK: usize = 2 * 1024 * 1024; // 2 MB chunks for zero writes
 
 /// progress reporting trait for partition extraction
 /// implement this to receive progress updates during extraction
@@ -103,6 +105,47 @@ where
     Ok(total)
 }
 
+/// optimized zero handling using sparse files
+/// This avoids physically writing zeros - just seeks past the region
+/// The filesystem will automatically return zeros when reading these areas
+async fn handle_zero_region_sparse(
+    file: &mut File,
+    start_offset: u64,
+    total_bytes: u64,
+) -> Result<()> {
+    // Just seek past the zero region - no actual I/O needed!
+    // The filesystem will treat this as a sparse region (holes)
+    // When read later, it automatically returns zeros
+    file.seek(std::io::SeekFrom::Start(start_offset + total_bytes)).await?;
+    Ok(())
+}
+
+/// fallback >> dead_code >> write zeros in large chunks for filesystems that don't support sparse files
+/// (use this only if sparse file approach causes issues on your target filesystem)
+#[allow(dead_code)]
+async fn write_zeros_chunked(
+    file: &mut File,
+    start_offset: u64,
+    total_bytes: u64,
+    zero_chunk: &[u8],
+) -> Result<()> {
+    file.seek(std::io::SeekFrom::Start(start_offset)).await?;
+    
+    let chunk_size = zero_chunk.len() as u64;
+    let full_chunks = total_bytes / chunk_size;
+    let remainder = (total_bytes % chunk_size) as usize;
+
+    for _ in 0..full_chunks {
+        file.write_all(zero_chunk).await?;
+    }
+
+    if remainder > 0 {
+        file.write_all(&zero_chunk[..remainder]).await?;
+    }
+
+    Ok(())
+}
+
 /// context for processing operations -> groups related parameters
 struct OperationContext<'a> {
     data_offset: u64,
@@ -110,11 +153,11 @@ struct OperationContext<'a> {
     payload_reader: &'a mut dyn PayloadReader,
     out_file: &'a mut File,
     copy_buffer: &'a mut [u8],
-    zero_buffer: &'a [u8],
     #[cfg(feature = "diff_ota")]
     diff_ctx: Option<&'a DiffContext>,
     #[cfg(feature = "diff_ota")]
     source_file: Option<&'a mut File>,
+    current_pos: u64, // Track current file position to avoid redundant seeks
 }
 
 async fn process_operation_streaming(
@@ -130,23 +173,31 @@ async fn process_operation_streaming(
     match op.r#type() {
         install_operation::Type::Replace => {
             let mut stream = ctx.payload_reader.read_range(offset, length).await?;
-            ctx.out_file
-                .seek(std::io::SeekFrom::Start(
-                    op.dst_extents[0].start_block.unwrap_or(0) * ctx.block_size,
-                ))
-                .await?;
-            copy_with_buffer(&mut stream, ctx.out_file, ctx.copy_buffer).await?;
+            let target_pos = op.dst_extents[0].start_block.unwrap_or(0) * ctx.block_size;
+            
+            // Avoid redundant seek if already at correct position
+            if ctx.current_pos != target_pos {
+                ctx.out_file.seek(std::io::SeekFrom::Start(target_pos)).await?;
+                ctx.current_pos = target_pos;
+            }
+            
+            let written = copy_with_buffer(&mut stream, ctx.out_file, ctx.copy_buffer).await?;
+            ctx.current_pos += written;
         }
         install_operation::Type::ReplaceXz => {
             let stream = ctx.payload_reader.read_range(offset, length).await?;
             let mut decoder = XzDecoder::new(BufReader::with_capacity(BUFREADER_SIZE, stream));
-            ctx.out_file
-                .seek(std::io::SeekFrom::Start(
-                    op.dst_extents[0].start_block.unwrap_or(0) * ctx.block_size,
-                ))
-                .await?;
+            let target_pos = op.dst_extents[0].start_block.unwrap_or(0) * ctx.block_size;
+            
+            if ctx.current_pos != target_pos {
+                ctx.out_file.seek(std::io::SeekFrom::Start(target_pos)).await?;
+                ctx.current_pos = target_pos;
+            }
+            
             match copy_with_buffer(&mut decoder, ctx.out_file, ctx.copy_buffer).await {
-                Ok(_) => {}
+                Ok(written) => {
+                    ctx.current_pos += written;
+                }
                 Err(e) => {
                     reporter.on_warning(
                         partition_name,
@@ -160,13 +211,17 @@ async fn process_operation_streaming(
         install_operation::Type::ReplaceBz => {
             let stream = ctx.payload_reader.read_range(offset, length).await?;
             let mut decoder = BzDecoder::new(BufReader::with_capacity(BUFREADER_SIZE, stream));
-            ctx.out_file
-                .seek(std::io::SeekFrom::Start(
-                    op.dst_extents[0].start_block.unwrap_or(0) * ctx.block_size,
-                ))
-                .await?;
+            let target_pos = op.dst_extents[0].start_block.unwrap_or(0) * ctx.block_size;
+            
+            if ctx.current_pos != target_pos {
+                ctx.out_file.seek(std::io::SeekFrom::Start(target_pos)).await?;
+                ctx.current_pos = target_pos;
+            }
+            
             match copy_with_buffer(&mut decoder, ctx.out_file, ctx.copy_buffer).await {
-                Ok(_) => {}
+                Ok(written) => {
+                    ctx.current_pos += written;
+                }
                 Err(e) => {
                     reporter.on_warning(
                         partition_name,
@@ -190,13 +245,17 @@ async fn process_operation_streaming(
                 return Ok(());
             }
 
-            ctx.out_file
-                .seek(std::io::SeekFrom::Start(
-                    op.dst_extents[0].start_block.unwrap_or(0) * ctx.block_size,
-                ))
-                .await?;
+            let target_pos = op.dst_extents[0].start_block.unwrap_or(0) * ctx.block_size;
+            
+            if ctx.current_pos != target_pos {
+                ctx.out_file.seek(std::io::SeekFrom::Start(target_pos)).await?;
+                ctx.current_pos = target_pos;
+            }
+            
             match copy_with_buffer(&mut decoder, ctx.out_file, ctx.copy_buffer).await {
-                Ok(_) => {}
+                Ok(written) => {
+                    ctx.current_pos += written;
+                }
                 Err(e) => {
                     reporter.on_warning(
                         partition_name,
@@ -208,15 +267,23 @@ async fn process_operation_streaming(
             }
         }
         install_operation::Type::Zero => {
+            // zero handling using sparse files
+            // Instead of writing zeros, just seek past the region
+            // This turns multi GB zero operations into instant seeks
             for ext in &op.dst_extents {
-                ctx.out_file
-                    .seek(std::io::SeekFrom::Start(
-                        ext.start_block.unwrap_or(0) * ctx.block_size,
-                    ))
-                    .await?;
-                for _ in 0..ext.num_blocks.unwrap_or(0) {
-                    ctx.out_file.write_all(ctx.zero_buffer).await?;
-                }
+                let start_block = ext.start_block.unwrap_or(0);
+                let num_blocks = ext.num_blocks.unwrap_or(0);
+                let start_offset = start_block * ctx.block_size;
+                let total_bytes = num_blocks * ctx.block_size;
+                
+                // Use sparse file optimization >> no actual I/O!
+                handle_zero_region_sparse(
+                    ctx.out_file,
+                    start_offset,
+                    total_bytes,
+                ).await?;
+                
+                ctx.current_pos = start_offset + total_bytes;
             }
         }
         install_operation::Type::SourceCopy
@@ -243,6 +310,9 @@ async fn process_operation_streaming(
                         reporter,
                     })
                     .await?;
+                    
+                    // Update position after diff operation
+                    ctx.current_pos = ctx.out_file.stream_position().await?;
                 } else {
                     return Err(anyhow!(
                         "Operation {} is a differential OTA operation but source directory not provided. Use --source-dir option.",
@@ -345,9 +415,11 @@ pub async fn dump_partition<P: AsyncPayloadRead>(
 
     let mut reader = payload_reader.open_reader().await?;
 
-    // allocate reusable buffers once
+    // Allocate reusable buffers once >> now with larger sizes
     let mut copy_buffer = vec![0u8; COPY_BUFFER_SIZE];
-    let zero_buffer = vec![0u8; block_size as usize];
+    // zero_chunk no longer needed with sparse file optimization
+    // Keeping it commented for potential fallback
+    // let zero_chunk = vec![0u8; ZERO_WRITE_CHUNK];
 
     // Create context to group related parameters
     let mut ctx = OperationContext {
@@ -356,11 +428,11 @@ pub async fn dump_partition<P: AsyncPayloadRead>(
         payload_reader: &mut *reader,
         out_file: &mut out_file,
         copy_buffer: &mut copy_buffer,
-        zero_buffer: &zero_buffer,
         #[cfg(feature = "diff_ota")]
         diff_ctx: diff_ctx.as_ref(),
         #[cfg(feature = "diff_ota")]
         source_file: source_file_opt.as_mut(),
+        current_pos: 0, // Initialize position tracker
     };
 
     for (i, op) in partition.operations.iter().enumerate() {
