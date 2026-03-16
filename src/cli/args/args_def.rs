@@ -68,9 +68,11 @@ const VERSION_STRING: &str = concat!(
 pub struct Args {
     #[arg(
         value_name = "PAYLOAD",
-        help = "Path to payload file or remote URL",
+        help = "Path to payload file or remote OTA URL",
         long_help = "Path to the Android OTA payload file. Can be a local path to a .bin file, \
-                     a .zip archive containing payload.bin, or a remote URL to download from"
+                 a .zip archive containing payload.bin, or a remote URL. When a URL is \
+                 provided the tool does not download the entire file. Required data is \
+                 fetched on-demand using HTTP range requests"
     )]
     pub payload_path: PathBuf,
 
@@ -158,9 +160,9 @@ pub struct Args {
         value_name = "COUNT",
         help = "Number of threads for parallel extraction",
         long_help = "Number of worker threads to use for concurrent partition extraction. \
-                     More threads can significantly speed up extraction on systems with fast \
-                     storage, but will use more memory and CPU resources. Automatically defaults \
-                     to twice the number of CPU cores, capped at 32"
+                 More threads can significantly speed up extraction on systems with fast \
+                 storage, but will use more memory and CPU resources. Defaults to the \
+                 number of logical CPU cores available on the system"
     )]
     pub threads: Option<usize>,
 
@@ -213,7 +215,7 @@ pub struct Args {
 
     #[arg(
         long,
-        help = "Pre-download all data before extraction (remote URLs only)",
+        help = "Pre-download all required payload data before extraction (remote URLs only)",
         long_help = "Download all required partition data to a temporary directory before starting \
                      extraction. This eliminates network latency during per-operation processing, \
                      trading upfront download time for faster overall extraction. Most beneficial \
