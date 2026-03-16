@@ -29,8 +29,7 @@ pub async fn run() -> Result<()> {
     let thread_count = if args.no_parallel {
         1
     } else {
-        args.threads
-            .unwrap_or_else(|| (num_cpus::get() * 2).min(32))
+        args.threads.unwrap_or_else(|| num_cpus::get())
     };
 
     ui.println(format!("- Initialized {} thread(s)", thread_count));
