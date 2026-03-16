@@ -20,8 +20,13 @@ pub struct RemoteAsyncZipPayloadReader {
 }
 
 impl RemoteAsyncZipPayloadReader {
-    pub async fn new(url: String, user_agent: Option<&str>, cookies: Option<&str>) -> Result<Self> {
-        let http_reader = HttpReader::new(url, user_agent, cookies).await?;
+    pub async fn new(
+        url: String,
+        user_agent: Option<&str>,
+        cookies: Option<&str>,
+        dns: Option<&str>,
+    ) -> Result<Self> {
+        let http_reader = HttpReader::new(url, user_agent, cookies, dns).await?;
 
         let entry = ZipParser::find_payload_entry(&http_reader).await?;
         let payload_offset = ZipParser::get_data_offset(&http_reader, &entry).await?;

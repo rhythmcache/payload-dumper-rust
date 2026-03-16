@@ -38,6 +38,7 @@ pub async fn load_payload(
     payload_type: PayloadType,
     user_agent: Option<&str>,
     cookies: Option<&str>,
+    dns: Option<&str>,
     ui: &UiOutput,
 ) -> Result<PayloadInfo> {
     let payload_path_str = payload_path.to_string_lossy().to_string();
@@ -48,7 +49,8 @@ pub async fn load_payload(
             {
                 ui.println("- Connecting to remote ZIP archive...");
                 let (manifest, data_offset, content_length) =
-                    parse_remote_payload(payload_path_str.clone(), user_agent, cookies).await?;
+                    parse_remote_payload(payload_path_str.clone(), user_agent, cookies, dns)
+                        .await?;
                 ui.pb_eprintln(format!(
                     "- Remote ZIP size: {}",
                     format_size(content_length)
@@ -65,7 +67,8 @@ pub async fn load_payload(
             {
                 ui.println("- Connecting to remote .bin file...");
                 let (manifest, data_offset, content_length) =
-                    parse_remote_bin_payload(payload_path_str.clone(), user_agent, cookies).await?;
+                    parse_remote_bin_payload(payload_path_str.clone(), user_agent, cookies, dns)
+                        .await?;
                 ui.pb_eprintln(format!(
                     "- Remote .bin size: {}",
                     format_size(content_length)
@@ -97,8 +100,13 @@ pub async fn load_payload(
             {
                 ui.println("- Preparing remote ZIP extraction...");
                 Arc::new(
-                    RemoteAsyncZipPayloadReader::new(payload_path_str.clone(), user_agent, cookies)
-                        .await?,
+                    RemoteAsyncZipPayloadReader::new(
+                        payload_path_str.clone(),
+                        user_agent,
+                        cookies,
+                        dns,
+                    )
+                    .await?,
                 )
             }
             #[cfg(not(feature = "remote_zip"))]
@@ -111,8 +119,13 @@ pub async fn load_payload(
             {
                 ui.println("- Preparing remote .bin extraction...");
                 Arc::new(
-                    RemoteAsyncBinPayloadReader::new(payload_path_str.clone(), user_agent, cookies)
-                        .await?,
+                    RemoteAsyncBinPayloadReader::new(
+                        payload_path_str.clone(),
+                        user_agent,
+                        cookies,
+                        dns,
+                    )
+                    .await?,
                 )
             }
             #[cfg(not(feature = "remote_zip"))]

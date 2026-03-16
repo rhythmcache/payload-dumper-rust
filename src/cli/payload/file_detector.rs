@@ -25,11 +25,16 @@ async fn read_sn(path: &Path) -> Result<[u8; 4]> {
 
 /// reads magic bytes from a remote URL
 #[cfg(feature = "remote_zip")]
-async fn read_r_sn(url: &str, user_agent: Option<&str>, cookies: Option<&str>) -> Result<[u8; 4]> {
+async fn read_r_sn(
+    url: &str,
+    user_agent: Option<&str>,
+    cookies: Option<&str>,
+    dns: Option<&str>,
+) -> Result<[u8; 4]> {
     use anyhow::Context;
     use payload_dumper::http::HttpReader;
 
-    let http_reader = HttpReader::new(url.to_string(), user_agent, cookies)
+    let http_reader = HttpReader::new(url.to_string(), user_agent, cookies, dns)
         .await
         .context("Failed to initialize HTTP reader")?;
 
@@ -51,6 +56,7 @@ pub async fn detect_payload_type(
     payload_path: &Path,
     user_agent: Option<&str>,
     cookies: Option<&str>,
+    dns: Option<&str>,
 ) -> Result<PayloadType> {
     let payload_path_str = payload_path.to_string_lossy().to_string();
     let is_url =
@@ -60,7 +66,7 @@ pub async fn detect_payload_type(
     let file_type = if is_url {
         #[cfg(feature = "remote_zip")]
         {
-            let magic = read_r_sn(&payload_path_str, user_agent, cookies).await?;
+            let magic = read_r_sn(&payload_path_str, user_agent, cookies, dns).await?;
             detect_file(&magic).map_err(|e| {
                 anyhow!(
                     "Unable to detect remote file type for {}: {}",

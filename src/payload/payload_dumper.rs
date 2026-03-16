@@ -116,7 +116,8 @@ async fn handle_zero_region_sparse(
     // Just seek past the zero region - no actual I/O needed!
     // The filesystem will treat this as a sparse region (holes)
     // When read later, it automatically returns zeros
-    file.seek(std::io::SeekFrom::Start(start_offset + total_bytes)).await?;
+    file.seek(std::io::SeekFrom::Start(start_offset + total_bytes))
+        .await?;
     Ok(())
 }
 
@@ -130,7 +131,7 @@ async fn write_zeros_chunked(
     zero_chunk: &[u8],
 ) -> Result<()> {
     file.seek(std::io::SeekFrom::Start(start_offset)).await?;
-    
+
     let chunk_size = zero_chunk.len() as u64;
     let full_chunks = total_bytes / chunk_size;
     let remainder = (total_bytes % chunk_size) as usize;
@@ -174,13 +175,15 @@ async fn process_operation_streaming(
         install_operation::Type::Replace => {
             let mut stream = ctx.payload_reader.read_range(offset, length).await?;
             let target_pos = op.dst_extents[0].start_block.unwrap_or(0) * ctx.block_size;
-            
+
             // Avoid redundant seek if already at correct position
             if ctx.current_pos != target_pos {
-                ctx.out_file.seek(std::io::SeekFrom::Start(target_pos)).await?;
+                ctx.out_file
+                    .seek(std::io::SeekFrom::Start(target_pos))
+                    .await?;
                 ctx.current_pos = target_pos;
             }
-            
+
             let written = copy_with_buffer(&mut stream, ctx.out_file, ctx.copy_buffer).await?;
             ctx.current_pos += written;
         }
@@ -188,12 +191,14 @@ async fn process_operation_streaming(
             let stream = ctx.payload_reader.read_range(offset, length).await?;
             let mut decoder = XzDecoder::new(BufReader::with_capacity(BUFREADER_SIZE, stream));
             let target_pos = op.dst_extents[0].start_block.unwrap_or(0) * ctx.block_size;
-            
+
             if ctx.current_pos != target_pos {
-                ctx.out_file.seek(std::io::SeekFrom::Start(target_pos)).await?;
+                ctx.out_file
+                    .seek(std::io::SeekFrom::Start(target_pos))
+                    .await?;
                 ctx.current_pos = target_pos;
             }
-            
+
             match copy_with_buffer(&mut decoder, ctx.out_file, ctx.copy_buffer).await {
                 Ok(written) => {
                     ctx.current_pos += written;
@@ -212,12 +217,14 @@ async fn process_operation_streaming(
             let stream = ctx.payload_reader.read_range(offset, length).await?;
             let mut decoder = BzDecoder::new(BufReader::with_capacity(BUFREADER_SIZE, stream));
             let target_pos = op.dst_extents[0].start_block.unwrap_or(0) * ctx.block_size;
-            
+
             if ctx.current_pos != target_pos {
-                ctx.out_file.seek(std::io::SeekFrom::Start(target_pos)).await?;
+                ctx.out_file
+                    .seek(std::io::SeekFrom::Start(target_pos))
+                    .await?;
                 ctx.current_pos = target_pos;
             }
-            
+
             match copy_with_buffer(&mut decoder, ctx.out_file, ctx.copy_buffer).await {
                 Ok(written) => {
                     ctx.current_pos += written;
@@ -246,12 +253,14 @@ async fn process_operation_streaming(
             }
 
             let target_pos = op.dst_extents[0].start_block.unwrap_or(0) * ctx.block_size;
-            
+
             if ctx.current_pos != target_pos {
-                ctx.out_file.seek(std::io::SeekFrom::Start(target_pos)).await?;
+                ctx.out_file
+                    .seek(std::io::SeekFrom::Start(target_pos))
+                    .await?;
                 ctx.current_pos = target_pos;
             }
-            
+
             match copy_with_buffer(&mut decoder, ctx.out_file, ctx.copy_buffer).await {
                 Ok(written) => {
                     ctx.current_pos += written;
@@ -275,14 +284,10 @@ async fn process_operation_streaming(
                 let num_blocks = ext.num_blocks.unwrap_or(0);
                 let start_offset = start_block * ctx.block_size;
                 let total_bytes = num_blocks * ctx.block_size;
-                
+
                 // Use sparse file optimization >> no actual I/O!
-                handle_zero_region_sparse(
-                    ctx.out_file,
-                    start_offset,
-                    total_bytes,
-                ).await?;
-                
+                handle_zero_region_sparse(ctx.out_file, start_offset, total_bytes).await?;
+
                 ctx.current_pos = start_offset + total_bytes;
             }
         }
@@ -310,7 +315,7 @@ async fn process_operation_streaming(
                         reporter,
                     })
                     .await?;
-                    
+
                     // Update position after diff operation
                     ctx.current_pos = ctx.out_file.stream_position().await?;
                 } else {

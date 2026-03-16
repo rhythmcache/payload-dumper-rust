@@ -20,30 +20,36 @@ static GLOBAL_DNS_RESOLVER: OnceLock<
 > = OnceLock::new();
 
 #[cfg(feature = "hickory_dns")]
-async fn get_or_init_dns_resolver()
--> Result<Arc<hickory_resolver::Resolver<hickory_resolver::name_server::TokioConnectionProvider>>> {
+async fn get_or_init_dns_resolver(
+    custom_dns: Option<&str>,
+) -> Result<Arc<hickory_resolver::Resolver<hickory_resolver::name_server::TokioConnectionProvider>>>
+{
     use hickory_proto::xfer::Protocol;
     use hickory_resolver::Resolver;
     use hickory_resolver::config::*;
     use hickory_resolver::name_server::TokioConnectionProvider;
 
-    if let Some(resolver) = GLOBAL_DNS_RESOLVER.get() {
-        return Ok(resolver.clone());
-    }
+    /*   if let Some(resolver) = GLOBAL_DNS_RESOLVER.get() {
+           return Ok(resolver.clone());
+       }
+    */
+    // priority: CLI argument > environment variable
+    let dns_source = custom_dns
+        .map(|s| s.to_string())
+        .or_else(|| std::env::var("PAYLOAD_DUMPER_CUSTOM_DNS").ok());
 
-    // check for custom DNS from environment variable
-    let config = if let Ok(custom_dns) = std::env::var("PAYLOAD_DUMPER_CUSTOM_DNS") {
+    let config = if let Some(dns_str) = dns_source {
         // parse custom DNS servers (comma-separated, for example., "8.8.8.8,8.8.4.4")
-        let dns_ips: Result<Vec<_>> = custom_dns
+        let dns_ips: Result<Vec<_>> = dns_str
             .split(',')
             .map(|s| s.trim().parse::<std::net::IpAddr>())
             .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|e| anyhow!("Invalid DNS IP in PAYLOAD_DUMPER_CUSTOM_DNS: {}", e));
+            .map_err(|e| anyhow!("Invalid DNS IP: {}", e));
 
         let dns_ips = dns_ips?;
 
         if dns_ips.is_empty() {
-            return Err(anyhow!("PAYLOAD_DUMPER_CUSTOM_DNS is empty"));
+            return Err(anyhow!("DNS configuration is empty"));
         }
 
         // Create config with custom DNS servers
@@ -75,7 +81,11 @@ async fn get_or_init_dns_resolver()
 }
 
 /// HTTP client
-async fn create_http_client(user_agent: Option<&str>, cookies: Option<&str>) -> Result<Client> {
+async fn create_http_client(
+    user_agent: Option<&str>,
+    cookies: Option<&str>,
+    dns: Option<&str>,
+) -> Result<Client> {
     let mut headers = header::HeaderMap::new();
 
     let ua = user_agent.unwrap_or(DEFAULT_USER_AGENT);
@@ -135,7 +145,7 @@ async fn create_http_client(user_agent: Option<&str>, cookies: Option<&str>) -> 
             }
         }
 
-        let resolver = get_or_init_dns_resolver()
+        let resolver = get_or_init_dns_resolver(dns)
             .await
             .map_err(|e| anyhow!("Failed to create DNS resolver: {}", e))?;
 
@@ -155,8 +165,13 @@ pub struct HttpReader {
 }
 
 impl HttpReader {
-    pub async fn new(url: String, user_agent: Option<&str>, cookies: Option<&str>) -> Result<Self> {
-        let client = create_http_client(user_agent, cookies).await?;
+    pub async fn new(
+        url: String,
+        user_agent: Option<&str>,
+        cookies: Option<&str>,
+        dns: Option<&str>,
+    ) -> Result<Self> {
+        let client = create_http_client(user_agent, cookies, dns).await?;
 
         // validate URL
         url::Url::parse(&url).map_err(|e| anyhow!("Invalid URL: {}", e))?;

@@ -60,6 +60,7 @@ pub async fn run() -> Result<()> {
         &args.payload_path,
         args.user_agent.as_deref(),
         args.cookies.as_deref(),
+        args.dns.as_deref(),
     )
     .await?;
 
@@ -71,6 +72,7 @@ pub async fn run() -> Result<()> {
         payload_type,
         args.user_agent.as_deref(),
         args.cookies.as_deref(),
+        args.dns.as_deref(),
         &ui,
     )
     .await?;
@@ -174,6 +176,7 @@ pub async fn run() -> Result<()> {
                         url.clone(),
                         args.user_agent.as_deref(),
                         args.cookies.as_deref(),
+                        args.dns.as_deref(),
                     )
                     .await?;
                     let entry = ZipParser::find_payload_entry(&http_reader).await?;

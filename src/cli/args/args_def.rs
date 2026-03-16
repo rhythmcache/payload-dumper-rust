@@ -140,6 +140,26 @@ pub struct Args {
     pub cookies: Option<String>,
 
     #[arg(
+        long,
+        value_name = "DNS",
+        help = if cfg!(feature = "hickory_dns") {
+            "Custom DNS servers (comma-separated IPs)"
+        } else {
+            "Custom DNS servers [requires hickory_dns feature]"
+        },
+        long_help = if cfg!(feature = "hickory_dns") {
+            "Comma-separated list of DNS server IP addresses to use for resolving remote OTA URLs. \
+             Overrides system DNS and defaults to Cloudflare (1.1.1.1, 1.0.0.1) if not provided. \
+             Can also be set via PAYLOAD_DUMPER_CUSTOM_DNS environment variable"
+        } else {
+            "Custom DNS servers for resolving remote OTA URLs. This feature requires compilation \
+             with --features hickory_dns"
+        },
+        hide = cfg!(not(feature = "hickory_dns"))
+    )]
+    pub dns: Option<String>,
+
+    #[arg(
         short = 'i',
         long,
         default_value = "",

@@ -50,8 +50,13 @@ async fn extract_prefetch_sequential(
     let mut failed_partitions = Vec::new();
     let temp_dir = TempDir::new()?;
 
-    let http_reader =
-        HttpReader::new(url, args.user_agent.as_deref(), args.cookies.as_deref()).await?;
+    let http_reader = HttpReader::new(
+        url,
+        args.user_agent.as_deref(),
+        args.cookies.as_deref(),
+        args.dns.as_deref(),
+    )
+    .await?;
 
     for partition in partitions {
         let partition_name = &partition.partition_name;
@@ -99,8 +104,15 @@ async fn extract_prefetch_parallel(
     let temp_dir = TempDir::new()?;
     let temp_dir_path = temp_dir.path().to_path_buf();
 
-    let http_reader =
-        Arc::new(HttpReader::new(url, args.user_agent.as_deref(), args.cookies.as_deref()).await?);
+    let http_reader = Arc::new(
+        HttpReader::new(
+            url,
+            args.user_agent.as_deref(),
+            args.cookies.as_deref(),
+            args.dns.as_deref(),
+        )
+        .await?,
+    );
 
     let semaphore = Arc::new(Semaphore::new(thread_count));
     let mut tasks = Vec::new();
