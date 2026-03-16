@@ -30,51 +30,51 @@ name = "payload_dumper"
 path = "src/main.rs"
 
 [dependencies]
-anyhow = "1.0.100"
+anyhow = "1.0.102"
 digest = "0.10.7"
-indicatif = "0.18.3"
-prost = "0.14.1"
+indicatif = "0.18.4"
+prost = "0.14.3"
 sha2 = "0.10.9"
 num_cpus = "1.17.0"
 hex = "0.4.3"
-clap = { version = "4.5.53", features = ["derive"] }
+clap = { version = "4.6.0", features = ["derive"] }
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.145"
-tokio = { version = "1.48.0", features = [
+serde_json = "1.0.149"
+tokio = { version = "1.50.0", features = [
     "rt",
     "rt-multi-thread",
     "io-util",
     "time",
     "full",
 ] }
-futures = "0.3.31"
-async-compression = { version = "0.4.36", features = [
+futures = "0.3.32"
+async-compression = { version = "0.4.41", features = [
     "zstd",
     "xz",
     "bzip2",
     "tokio",
 ] }
 async-trait = "0.1.89"
-tokio-util = { version = "0.7.17", features = ["io"], optional = true }
-url = "2.5.7"
-reqwest = { version = "0.12.26", features = [
+tokio-util = { version = "0.7.18", features = ["io"], optional = true }
+url = "2.5.8"
+reqwest = { version = "0.12.28", features = [
     "rustls-tls-webpki-roots",
     "stream",
     "gzip",
     "http2",
 ], default-features = false, optional = true }
 hickory-resolver = { version = "0.25.2", optional = true }
-tempfile = { version = "3.23.0", optional = true }
+tempfile = { version = "3.27.0", optional = true }
 ahash = "0.8.12"
 hickory-proto = { version = "0.25.2", optional = true }
-once_cell = "1.21.3"
-futures-util = "0.3.31"
-lz4_flex = { version = "0.12.0", default-features = false, optional = true }
+once_cell = "1.21.4"
+futures-util = "0.3.32"
+lz4_flex = { version = "0.12.1", default-features = false, optional = true }
 bsdiff-android = { version = "0.0.2", optional = true }
 
 [build-dependencies]
-chrono      = "0.4.42"
-prost-build = "0.14.1"
+chrono      = "0.4.44"
+prost-build = "0.14.3"
 
 [features]
 default = ["local_zip", "remote_zip", "prefetch", "diff_ota"]
