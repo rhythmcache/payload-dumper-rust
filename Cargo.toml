@@ -78,7 +78,7 @@ prost-build = "0.14.3"
 [features]
 default = ["local_zip", "remote_zip", "prefetch", "diff_ota"]
 local_zip = []
-remote_zip = ["local_zip", "dep:tokio-util"]
+remote_zip = ["local_zip", "dep:tokio-util", "dep:reqwest"]
 hickory_dns = [
     "remote_zip",
     "dep:hickory-resolver",
