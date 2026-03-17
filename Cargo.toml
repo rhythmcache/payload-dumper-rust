@@ -67,10 +67,10 @@ reqwest = { version = "0.13", features = [
     "rustls",
     "stream",
     "http2",
-    "gzip",
 ], default-features = false, optional = true }
 digest = "0.11.2"
 sha2 = { version = "0.10.9", features = ["asm"] }
+
 [build-dependencies]
 chrono      = "0.4.44"
 prost-build = "0.14.3"
@@ -90,11 +90,9 @@ prefetch = ["remote_zip", "dep:tempfile"]
 reqwest = ["dep:reqwest"]
 
 [profile.release]
-opt-level       = 3
-lto             = "fat"
-codegen-units   = 1
-panic           = "abort"
-strip           = true
-debug           = false
-incremental     = false
-overflow-checks = false
+opt-level     = 3
+lto           = "fat"
+codegen-units = 1
+panic         = "abort"
+strip         = true
+debug         = false
