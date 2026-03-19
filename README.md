@@ -119,6 +119,7 @@ Options:
   -o, --out <OUT>              Output directory [default: output]
   -U, --user-agent <AGENT>     Custom User-Agent for HTTP requests
   -C, --cookies <COOKIES>      Custom HTTP Cookie header value for remote requests
+      --dns <DNS>              Custom DNS servers (comma-separated IPs)
   -i, --images <IMAGES>        Comma-separated partition names to extract
   -t, --threads <THREADS>      Number of threads for parallel processing
   -l, --list                   List available partitions
@@ -213,15 +214,23 @@ This enables:
 - Reliable behavior in fully static environments
 
 By default, the resolver uses **Cloudflare DNS (1.1.1.1)**.
-
 #### Override DNS server at runtime
-The DNS server is selected **at runtime**
+The DNS server is selected **at runtime**.
 
-To use a custom DNS server, set the environment variable **when running the binary**:
+You can override it in two ways:
+
+**1. Using environment variable**
 ```bash
 export PAYLOAD_DUMPER_CUSTOM_DNS=8.8.8.8,4.4.4.4
-./payload_dumper
+./payload_dumper <PAYLOAD>
 ```
+
+**2. Using CLI flag (`--dns`)**
+```bash
+./payload_dumper --dns 8.8.8.8,4.4.4.4 <PAYLOAD>
+```
+
+> If both are provided, the `--dns` flag takes precedence.
 ---
 If you are unsure, use the default build. 
 
