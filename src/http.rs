@@ -174,7 +174,7 @@ impl HttpReader {
         let client = create_http_client(user_agent, cookies, dns).await?;
 
         // validate URL
-        url::Url::parse(&url).map_err(|e| anyhow!("Invalid URL: {}", e))?;
+        reqwest::Url::parse(&url).map_err(|e| anyhow!("Invalid URL: {}", e))?;
 
         // head request with retries
         let mut retry_count = 0;
