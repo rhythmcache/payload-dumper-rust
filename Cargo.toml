@@ -87,7 +87,6 @@ hickory_dns = [
 ]
 diff_ota = ["dep:bsdiff-android", "dep:lz4_flex"]
 prefetch = ["remote_zip", "dep:tempfile"]
-reqwest = ["dep:reqwest"]
 
 [profile.release]
 opt-level     = 3
