@@ -336,13 +336,59 @@ pub async fn process_diff_operation(params: DiffOperationParams<'_>) -> Result<(
                 .context("Failed to write LZ4-patched data")?;
         }
 
-        install_operation::Type::Puffdiff | install_operation::Type::Lz4diffPuffdiff => {
+        install_operation::Type::Puffdiff => {
+            let source_data = ctx
+                .read_source_extents(source_file, &op.src_extents)
+                .await
+                .context("Failed to read source extents for PUFFDIFF")?;
+
+            let patch_offset = data_offset + op.data_offset.unwrap_or(0);
+            let patch_length = op.data_length.unwrap_or(0);
+
+            if patch_length > MAX_OPERATION_SIZE as u64 {
+                return Err(anyhow!("Patch size {} exceeds safety limit", patch_length));
+            }
+
+            let mut patch_stream = payload_reader
+                .read_range(patch_offset, patch_length)
+                .await
+                .context("Failed to read patch data")?;
+
+            let mut patch_data = Vec::with_capacity(patch_length as usize);
+            patch_stream
+                .read_to_end(&mut patch_data)
+                .await
+                .context("Failed to read patch stream")?;
+
+            let patched_data = puffdiff::puffpatch(&source_data, &patch_data)
+                .map_err(|e| anyhow!("PUFFDIFF patch failed: {}", e))?;
+
+            let expected_size: u64 = op
+                .dst_extents
+                .iter()
+                .map(|e| e.num_blocks.unwrap_or(0) * ctx.block_size)
+                .sum();
+
+            if patched_data.len() != expected_size as usize {
+                return Err(anyhow!(
+                    "Patched data size mismatch: expected {} bytes, got {} bytes",
+                    expected_size,
+                    patched_data.len()
+                ));
+            }
+
+            ctx.write_dst_extents(out_file, &op.dst_extents, &patched_data)
+                .await
+                .context("Failed to write PUFFDIFF data")?;
+        }
+
+        install_operation::Type::Lz4diffPuffdiff => {
             reporter.on_warning(
                 partition_name,
                 operation_index,
-                "PUFFDIFF operations not supported yet".to_string(),
+                "LZ4DIFF_PUFFDIFF operations not supported yet".to_string(),
             );
-            return Err(anyhow!("PUFFDIFF operation not supported"));
+            return Err(anyhow!("LZ4DIFF_PUFFDIFF operation not supported"));
         }
 
         install_operation::Type::Zucchini => {
