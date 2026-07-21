@@ -40,7 +40,7 @@ pub async fn run() -> Result<()> {
     }
 
     // Create output directory
-    if !is_stdout {
+    if !is_stdout && !(args.metadata.is_some() && args.out.extension().is_some()) {
         fs::create_dir_all(&args.out).await?;
     }
 
