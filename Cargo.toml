@@ -62,10 +62,13 @@ once_cell = "1.21"
 futures-util = "0.3"
 bsdiff-android = { version = "0.0.2", optional = true }
 puffdiff = { version = "0.1", optional = true }
-reqwest = { version = "0.12", features = [
-    "rustls-tls-webpki-roots",
+reqwest = { version = "0.13", features = [
+    "rustls-no-provider", # Prevents pulling in aws-lc-rs dependencies
     "stream",
     "http2",
+], default-features = false, optional = true }
+rustls = { version = "0.23", features = [
+    "ring",
 ], default-features = false, optional = true }
 digest = "0.11"
 sha2 = "0.11"
@@ -78,7 +81,7 @@ prost-build = "0.14"
 [features]
 default = ["local_zip", "remote_zip", "prefetch", "diff_ota"]
 local_zip = []
-remote_zip = ["local_zip", "dep:tokio-util", "dep:reqwest"]
+remote_zip = ["local_zip", "dep:tokio-util", "dep:reqwest", "dep:rustls"]
 hickory_dns = [
     "remote_zip",
     "dep:hickory-resolver",

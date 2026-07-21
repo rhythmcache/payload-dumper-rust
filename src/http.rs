@@ -7,6 +7,7 @@ use crate::constants::DEFAULT_USER_AGENT;
 use anyhow::{Result, anyhow};
 use futures_util::StreamExt;
 use reqwest::{Client, header};
+use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
@@ -74,6 +75,11 @@ async fn create_http_client(
     cookies: Option<&str>,
     dns: Option<&str>,
 ) -> Result<Client> {
+    static INIT_CRYPTO: Once = Once::new();
+    INIT_CRYPTO.call_once(|| {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
+
     let mut headers = header::HeaderMap::new();
 
     let ua = user_agent.unwrap_or(DEFAULT_USER_AGENT);
