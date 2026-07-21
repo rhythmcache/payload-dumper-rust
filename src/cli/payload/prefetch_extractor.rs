@@ -23,6 +23,7 @@ pub async fn extract_partitions_prefetch(
     block_size: u64,
     url: String,
     payload_offset: u64,
+    thread_count: usize,
     ui: &UiOutput,
 ) -> Result<Vec<String>> {
     let config = PartitionExtractionConfig {
@@ -34,7 +35,6 @@ pub async fn extract_partitions_prefetch(
     if args.no_parallel {
         extract_prefetch_sequential(args, partitions, &config, url, ui).await
     } else {
-        let thread_count = args.threads.unwrap_or_else(num_cpus::get);
         extract_prefetch_parallel(args, partitions, &config, url, thread_count, ui).await
     }
 }

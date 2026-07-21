@@ -19,6 +19,7 @@ pub async fn extract_partitions(
     data_offset: u64,
     block_size: u64,
     payload_reader: Arc<dyn AsyncPayloadRead>,
+    thread_count: usize,
     ui: &UiOutput,
 ) -> Result<Vec<String>> {
     if args.no_parallel {
@@ -32,9 +33,6 @@ pub async fn extract_partitions(
         )
         .await
     } else {
-        let thread_count = args
-            .threads
-            .unwrap_or_else(|| (num_cpus::get() * 2).min(32));
         extract_parallel(
             args,
             partitions,
