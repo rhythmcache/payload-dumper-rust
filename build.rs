@@ -15,7 +15,7 @@ fn main() {
         .to_string();
     println!("cargo:rustc-env=BUILD_TIMESTAMP={}", build_time);
 
-    let build_year = now.format("%Y").to_string();
+    let build_year = chrono::Utc::now().format("%Y").to_string();
     println!("cargo:rustc-env=BUILD_YEAR={}", build_year);
 
     // fallback to "unknown" if not available
