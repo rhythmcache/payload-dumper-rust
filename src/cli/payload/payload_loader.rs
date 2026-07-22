@@ -20,9 +20,11 @@ use payload_dumper::readers::local_zip_reader::LocalAsyncZipPayloadReader;
 use payload_dumper::readers::remote_bin_reader::RemoteAsyncBinPayloadReader;
 #[cfg(feature = "remote_zip")]
 use payload_dumper::readers::remote_zip_reader::RemoteAsyncZipPayloadReader;
-use payload_dumper::structs::DeltaArchiveManifest;
-#[cfg(feature = "remote_zip")]
+use payload_dumper::structs::{DeltaArchiveManifest, SourceInfo, ZipDetails};
+
 use payload_dumper::utils::format_size;
+#[cfg(any(feature = "local_zip", feature = "remote_zip"))]
+use payload_dumper::zip::core_parser::ZipMetadataInfo;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -30,9 +32,50 @@ pub struct PayloadInfo {
     pub manifest: DeltaArchiveManifest,
     pub data_offset: u64,
     pub reader: Arc<dyn AsyncPayloadRead>,
+    pub source_info: Option<SourceInfo>,
 }
 
-/// loads and parses the payload, returns manifest, data offset, and reader
+#[cfg(any(feature = "local_zip", feature = "remote_zip"))]
+fn create_zip_source_info(
+    source_type: &str,
+    path_or_url: &str,
+    zip_info: &ZipMetadataInfo,
+) -> SourceInfo {
+    let file_name = Path::new(path_or_url)
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| path_or_url.to_string());
+
+    let method_str = match zip_info.compression_method {
+        0 => "STORED (0)".to_string(),
+        8 => "DEFLATED (8)".to_string(),
+        other => format!("UNKNOWN ({})", other),
+    };
+
+    let zip_details = ZipDetails {
+        entry_name: zip_info.entry_name.clone(),
+        header_offset: zip_info.header_offset,
+        payload_data_offset: zip_info.payload_data_offset,
+        uncompressed_size: zip_info.uncompressed_size,
+        uncompressed_size_readable: format_size(zip_info.uncompressed_size),
+        compressed_size: zip_info.compressed_size,
+        compressed_size_readable: format_size(zip_info.compressed_size),
+        compression_method: method_str,
+        total_entries: zip_info.total_entries,
+        central_directory_offset: zip_info.central_directory_offset,
+    };
+
+    SourceInfo {
+        source_type: source_type.to_string(),
+        file_name,
+        file_path_or_url: path_or_url.to_string(),
+        archive_size: Some(zip_info.archive_size),
+        archive_size_readable: Some(format_size(zip_info.archive_size)),
+        zip_details: Some(zip_details),
+    }
+}
+
+/// loads and parses the payload, returns manifest, data offset, reader, and source info
 pub async fn load_payload(
     payload_path: &Path,
     payload_type: PayloadType,
@@ -43,19 +86,21 @@ pub async fn load_payload(
 ) -> Result<PayloadInfo> {
     let payload_path_str = payload_path.to_string_lossy().to_string();
 
-    let (manifest, data_offset) = match payload_type {
+    let (manifest, data_offset, source_info) = match payload_type {
         PayloadType::RemoteZip => {
             #[cfg(feature = "remote_zip")]
             {
                 ui.println("- Connecting to remote ZIP archive...");
-                let (manifest, data_offset, content_length) =
+                let (manifest, data_offset, zip_info) =
                     parse_remote_payload(payload_path_str.clone(), user_agent, cookies, dns)
                         .await?;
                 ui.pb_eprintln(format!(
                     "- Remote ZIP size: {}",
-                    format_size(content_length)
+                    format_size(zip_info.archive_size)
                 ));
-                (manifest, data_offset)
+                let source_info =
+                    create_zip_source_info("remote_zip", &payload_path_str, &zip_info);
+                (manifest, data_offset, Some(source_info))
             }
             #[cfg(not(feature = "remote_zip"))]
             {
@@ -73,7 +118,20 @@ pub async fn load_payload(
                     "- Remote .bin size: {}",
                     format_size(content_length)
                 ));
-                (manifest, data_offset)
+                let file_name = Path::new(&payload_path_str)
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| payload_path_str.clone());
+
+                let source_info = SourceInfo {
+                    source_type: "remote_bin".to_string(),
+                    file_name,
+                    file_path_or_url: payload_path_str.clone(),
+                    archive_size: Some(content_length),
+                    archive_size_readable: Some(format_size(content_length)),
+                    zip_details: None,
+                };
+                (manifest, data_offset, Some(source_info))
             }
             #[cfg(not(feature = "remote_zip"))]
             {
@@ -83,14 +141,37 @@ pub async fn load_payload(
         PayloadType::LocalZip => {
             #[cfg(feature = "local_zip")]
             {
-                parse_local_zip_payload(payload_path.to_path_buf()).await?
+                let (manifest, data_offset, zip_info) =
+                    parse_local_zip_payload(payload_path.to_path_buf()).await?;
+                let source_info = create_zip_source_info("local_zip", &payload_path_str, &zip_info);
+                (manifest, data_offset, Some(source_info))
             }
             #[cfg(not(feature = "local_zip"))]
             {
                 return Err(anyhow!("Local ZIP requires 'local_zip' feature"));
             }
         }
-        PayloadType::LocalBin => parse_local_payload(payload_path).await?,
+        PayloadType::LocalBin => {
+            let (manifest, data_offset) = parse_local_payload(payload_path).await?;
+            let file_size = tokio::fs::metadata(payload_path)
+                .await
+                .map(|m| m.len())
+                .ok();
+            let file_name = payload_path
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| payload_path_str.clone());
+
+            let source_info = SourceInfo {
+                source_type: "local_bin".to_string(),
+                file_name,
+                file_path_or_url: payload_path_str.clone(),
+                archive_size: file_size,
+                archive_size_readable: file_size.map(format_size),
+                zip_details: None,
+            };
+            (manifest, data_offset, Some(source_info))
+        }
     };
 
     // Create the appropriate reader
@@ -152,5 +233,6 @@ pub async fn load_payload(
         manifest,
         data_offset,
         reader,
+        source_info,
     })
 }

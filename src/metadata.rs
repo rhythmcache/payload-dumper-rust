@@ -12,6 +12,7 @@ pub async fn get_metadata(
     data_offset: u64,
     full_mode: bool,
     filter_partitions: Option<&HashSet<&str>>,
+    source_info: Option<SourceInfo>,
 ) -> Result<PayloadMetadata> {
     let mut partitions = Vec::new();
     let mut total_payload_size = 0u64;
@@ -305,6 +306,7 @@ pub async fn get_metadata(
         .collect();
 
     let payload_metadata = PayloadMetadata {
+        source_info,
         security_patch_level: manifest.security_patch_level.clone(),
         block_size: manifest.block_size.unwrap_or(4096),
         minor_version: manifest.minor_version.unwrap_or(0),

@@ -4,7 +4,7 @@
 use ahash::AHashSet as HashSet;
 use anyhow::{Result, anyhow};
 use payload_dumper::metadata::get_metadata;
-use payload_dumper::structs::DeltaArchiveManifest;
+use payload_dumper::structs::{DeltaArchiveManifest, SourceInfo};
 use std::path::Path;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
@@ -17,6 +17,7 @@ use tokio::io::AsyncWriteExt;
 /// * `mode` - metadata mode: "compact" or "full"
 /// * `filter_images` - comma-separated partition names to filter, or empty for all
 /// * `is_stdout` - whether output is directed to stdout
+/// * `source_info` - detailed source file and ZIP information
 pub async fn handle_metadata_extraction(
     manifest: &DeltaArchiveManifest,
     out_dir: &Path,
@@ -24,6 +25,7 @@ pub async fn handle_metadata_extraction(
     mode: &str,
     filter_images: &str,
     is_stdout: bool,
+    source_info: Option<SourceInfo>,
 ) -> Result<()> {
     let full_mode = mode == "full";
     // parse filter partitions if provided
@@ -33,8 +35,14 @@ pub async fn handle_metadata_extraction(
         None
     };
     // generate metadata
-    let metadata =
-        get_metadata(manifest, data_offset, full_mode, filter_partitions.as_ref()).await?;
+    let metadata = get_metadata(
+        manifest,
+        data_offset,
+        full_mode,
+        filter_partitions.as_ref(),
+        source_info,
+    )
+    .await?;
     // serialize to JSON
     let json_output = serde_json::to_string_pretty(&metadata)
         .map_err(|e| anyhow!("Failed to serialize metadata: {}", e))?;

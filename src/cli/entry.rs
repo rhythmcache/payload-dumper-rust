@@ -86,6 +86,7 @@ pub async fn run() -> Result<()> {
             mode,
             &args.images,
             is_stdout,
+            payload_info.source_info.clone(),
         )
         .await
         {
@@ -113,6 +114,7 @@ pub async fn run() -> Result<()> {
                 mode,
                 &args.images,
                 is_stdout,
+                payload_info.source_info.clone(),
             )
             .await
             {

@@ -10,8 +10,22 @@ use anyhow::{Result, anyhow};
 pub struct ZipEntry {
     pub name: String,
     pub uncompressed_size: u64,
+    pub compressed_size: u64,
     pub offset: u64,
     pub compression_method: u16,
+}
+
+#[derive(Debug, Clone)]
+pub struct ZipMetadataInfo {
+    pub entry_name: String,
+    pub header_offset: u64,
+    pub payload_data_offset: u64,
+    pub uncompressed_size: u64,
+    pub compressed_size: u64,
+    pub compression_method: u16,
+    pub total_entries: usize,
+    pub central_directory_offset: u64,
+    pub archive_size: u64,
 }
 
 pub struct ZipParser;
@@ -176,6 +190,13 @@ impl ZipParser {
             entry_header[45],
         ]) as u64;
 
+        let mut compressed_size = u32::from_le_bytes([
+            entry_header[20],
+            entry_header[21],
+            entry_header[22],
+            entry_header[23],
+        ]) as u64;
+
         let mut uncompressed_size = u32::from_le_bytes([
             entry_header[24],
             entry_header[25],
@@ -193,7 +214,10 @@ impl ZipParser {
             .await?;
 
         // handle ZIP64 extra fields
-        if local_header_offset == 0xFFFFFFFF || uncompressed_size == 0xFFFFFFFF {
+        if local_header_offset == 0xFFFFFFFF
+            || uncompressed_size == 0xFFFFFFFF
+            || compressed_size == 0xFFFFFFFF
+        {
             let mut pos = 0;
             while pos + 4 <= extra_data.len() {
                 let header_id = u16::from_le_bytes([extra_data[pos], extra_data[pos + 1]]);
@@ -205,6 +229,20 @@ impl ZipParser {
 
                     if uncompressed_size == 0xFFFFFFFF && field_pos + 8 <= pos + 4 + data_size {
                         uncompressed_size = u64::from_le_bytes([
+                            extra_data[field_pos],
+                            extra_data[field_pos + 1],
+                            extra_data[field_pos + 2],
+                            extra_data[field_pos + 3],
+                            extra_data[field_pos + 4],
+                            extra_data[field_pos + 5],
+                            extra_data[field_pos + 6],
+                            extra_data[field_pos + 7],
+                        ]);
+                        field_pos += 8;
+                    }
+
+                    if compressed_size == 0xFFFFFFFF && field_pos + 8 <= pos + 4 + data_size {
+                        compressed_size = u64::from_le_bytes([
                             extra_data[field_pos],
                             extra_data[field_pos + 1],
                             extra_data[field_pos + 2],
@@ -241,6 +279,7 @@ impl ZipParser {
             ZipEntry {
                 name: String::from_utf8_lossy(&filename).into_owned(),
                 uncompressed_size,
+                compressed_size,
                 offset: local_header_offset,
                 compression_method,
             },
@@ -310,5 +349,25 @@ impl ZipParser {
         }
 
         Ok(())
+    }
+
+    /// get full zip metadata information for payload.bin
+    pub async fn get_zip_info<I: ZipIO>(io: &I) -> Result<ZipMetadataInfo> {
+        let archive_size = io.size().await?;
+        let (cd_offset, num_entries) = Self::get_central_directory_info(io).await?;
+        let entry = Self::find_payload_entry(io).await?;
+        let payload_data_offset = Self::get_data_offset(io, &entry).await?;
+
+        Ok(ZipMetadataInfo {
+            entry_name: entry.name,
+            header_offset: entry.offset,
+            payload_data_offset,
+            uncompressed_size: entry.uncompressed_size,
+            compressed_size: entry.compressed_size,
+            compression_method: entry.compression_method,
+            total_entries: num_entries,
+            central_directory_offset: cd_offset,
+            archive_size,
+        })
     }
 }

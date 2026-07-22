@@ -195,8 +195,37 @@ pub struct ApexInfoMetadata {
     pub decompressed_size_readable: Option<String>,
 }
 
+#[derive(Serialize, Clone, Debug)]
+pub struct ZipDetails {
+    pub entry_name: String,
+    pub header_offset: u64,
+    pub payload_data_offset: u64,
+    pub uncompressed_size: u64,
+    pub uncompressed_size_readable: String,
+    pub compressed_size: u64,
+    pub compressed_size_readable: String,
+    pub compression_method: String,
+    pub total_entries: usize,
+    pub central_directory_offset: u64,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SourceInfo {
+    pub source_type: String,
+    pub file_name: String,
+    pub file_path_or_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub archive_size: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub archive_size_readable: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zip_details: Option<ZipDetails>,
+}
+
 #[derive(Serialize)]
 pub struct PayloadMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_info: Option<SourceInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub security_patch_level: Option<String>,
     pub block_size: u32,

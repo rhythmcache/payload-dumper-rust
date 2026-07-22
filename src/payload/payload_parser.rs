@@ -6,8 +6,8 @@ use crate::constants::{PAYLOAD_MAGIC, SUPPORTED_PAYLOAD_VERSION};
 #[cfg(feature = "remote_zip")]
 use crate::http::HttpReader;
 use crate::structs::DeltaArchiveManifest;
-#[cfg(feature = "local_zip")]
-use crate::zip::core_parser::ZipParser;
+#[cfg(any(feature = "local_zip", feature = "remote_zip"))]
+use crate::zip::core_parser::{ZipMetadataInfo, ZipParser};
 #[cfg(feature = "local_zip")]
 use crate::zip::local_zip_io::LocalZipIO;
 use anyhow::{Result, anyhow};
@@ -63,25 +63,19 @@ where
     Ok((manifest, data_offset))
 }
 
-/// returns (manifest, data_offset)
+/// returns (manifest, data_offset, zip_info)
 #[cfg(feature = "remote_zip")]
 pub async fn parse_remote_payload(
     url: String,
     user_agent: Option<&str>,
     cookies: Option<&str>,
     dns: Option<&str>,
-) -> Result<(DeltaArchiveManifest, u64, u64)> {
-    // Added u64 for content_length
+) -> Result<(DeltaArchiveManifest, u64, ZipMetadataInfo)> {
     let http_reader = HttpReader::new(url, user_agent, cookies, dns).await?;
-
-    // Get the content length to return
-    let content_length = http_reader.content_length;
-
-    let entry = ZipParser::find_payload_entry(&http_reader).await?;
-    let payload_offset = ZipParser::get_data_offset(&http_reader, &entry).await?;
+    let zip_info = ZipParser::get_zip_info(&http_reader).await?;
+    let payload_offset = zip_info.payload_data_offset;
     ZipParser::verify_payload_magic(&http_reader, payload_offset).await?;
 
-    // Now use your existing parse_remote_payload implementation
     let mut pos = payload_offset;
 
     // helper to read and advance position
@@ -128,7 +122,7 @@ pub async fn parse_remote_payload(
     // decode manifest
     let manifest = DeltaArchiveManifest::decode(&manifest_bytes[..])?;
 
-    Ok((manifest, data_offset, content_length)) // Return content_length too
+    Ok((manifest, data_offset, zip_info))
 }
 
 /// parse payload from local file
@@ -150,20 +144,22 @@ pub struct ZipPayloadFile {
 
 #[cfg(feature = "local_zip")]
 impl ZipPayloadFile {
-    pub async fn new(zip_path: PathBuf) -> Result<Self> {
+    pub async fn new(zip_path: PathBuf) -> Result<(Self, ZipMetadataInfo)> {
         let io = LocalZipIO::new(zip_path.clone()).await?;
-        let entry = ZipParser::find_payload_entry(&io).await?;
-        let data_offset = ZipParser::get_data_offset(&io, &entry).await?;
-        ZipParser::verify_payload_magic(&io, data_offset).await?;
+        let zip_info = ZipParser::get_zip_info(&io).await?;
+        ZipParser::verify_payload_magic(&io, zip_info.payload_data_offset).await?;
 
         let file = File::open(&zip_path).await?;
 
-        Ok(Self {
-            file,
-            payload_offset: data_offset,
-            payload_size: entry.uncompressed_size,
-            position: 0,
-        })
+        Ok((
+            Self {
+                file,
+                payload_offset: zip_info.payload_data_offset,
+                payload_size: zip_info.uncompressed_size,
+                position: 0,
+            },
+            zip_info,
+        ))
     }
 }
 
@@ -242,9 +238,12 @@ impl AsyncSeek for ZipPayloadFile {
 
 /// parse payload from local ZIP file
 #[cfg(feature = "local_zip")]
-pub async fn parse_local_zip_payload(zip_path: PathBuf) -> Result<(DeltaArchiveManifest, u64)> {
-    let zip_payload = ZipPayloadFile::new(zip_path).await?;
-    parse_payload(zip_payload).await
+pub async fn parse_local_zip_payload(
+    zip_path: PathBuf,
+) -> Result<(DeltaArchiveManifest, u64, ZipMetadataInfo)> {
+    let (zip_payload, zip_info) = ZipPayloadFile::new(zip_path).await?;
+    let (manifest, data_offset) = parse_payload(zip_payload).await?;
+    Ok((manifest, data_offset, zip_info))
 }
 
 /// Parse payload from remote .bin file (not in ZIP)
