@@ -16,25 +16,26 @@ jobs:
             target: x86_64-pc-windows-msvc
           - arch: i686
             target: i686-pc-windows-msvc
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      
+
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
         env:
           RUSTFLAGS: -C target-feature=+crt-static -C link-arg=/LTCG
-      
+
       - name: Generate SHA256
         shell: bash
         run: |
           cd target/${{ matrix.target }}/release
           sha256sum payload_dumper.exe > sha256sum.txt
-      
+
       - name: Package
         shell: bash
         run: |
@@ -43,7 +44,7 @@ jobs:
           cp target/${{ matrix.target }}/release/sha256sum.txt package/
           cd package
           7z a ../payload_dumper-windows-${{ matrix.arch }}.zip *
-      
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -52,25 +53,26 @@ jobs:
 
   build-windows-aarch64:
     runs-on: windows-11-arm
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-pc-windows-msvc
-      
+
       - name: Build
         run: cargo build --release --target aarch64-pc-windows-msvc
         env:
           RUSTFLAGS: -C target-feature=+crt-static -C link-arg=/LTCG
-      
+
       - name: Generate SHA256
         shell: bash
         run: |
           cd target/aarch64-pc-windows-msvc/release
           sha256sum payload_dumper.exe > sha256sum.txt
-      
+
       - name: Package
         shell: bash
         run: |
@@ -79,7 +81,7 @@ jobs:
           cp target/aarch64-pc-windows-msvc/release/sha256sum.txt package/
           cd package
           7z a ../payload_dumper-windows-aarch64.zip *
-      
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -95,22 +97,23 @@ jobs:
             target: x86_64-apple-darwin
           - arch: aarch64
             target: aarch64-apple-darwin
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      
+
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
-      
+
       - name: Generate SHA256
         run: |
           cd target/${{ matrix.target }}/release
           shasum -a 256 payload_dumper > sha256sum.txt
-      
+
       - name: Package
         run: |
           mkdir package
@@ -118,7 +121,7 @@ jobs:
           cp target/${{ matrix.target }}/release/sha256sum.txt package/
           cd package
           zip ../payload_dumper-macos-${{ matrix.arch }}.zip *
-      
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -134,40 +137,46 @@ jobs:
             target: x86_64-unknown-linux-gnu
             gcc_prefix: x86_64-linux-gnu
             packages: ""
+
           - arch: i686
             target: i686-unknown-linux-gnu
             gcc_prefix: ""
             packages: gcc-multilib g++-multilib
+
           - arch: aarch64
             target: aarch64-unknown-linux-gnu
             gcc_prefix: aarch64-linux-gnu
             packages: gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
           - arch: riscv64
             target: riscv64gc-unknown-linux-gnu
             gcc_prefix: riscv64-linux-gnu
             packages: gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
+
           - arch: armv7
             target: armv7-unknown-linux-gnueabihf
             gcc_prefix: arm-linux-gnueabihf
             packages: gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      
+
       - name: Install cross-compilation toolchain
         if: matrix.packages != ''
         run: |
           sudo apt-get update
           sudo apt-get install -y ${{ matrix.packages }}
-      
+
       - name: Setup cargo config
         if: matrix.arch != 'x86_64'
         run: |
           mkdir -p .cargo
+
           if [ "${{ matrix.arch }}" = "i686" ]; then
             cat > .cargo/config.toml << 'EOF'
           [target.i686-unknown-linux-gnu]
@@ -180,12 +189,12 @@ jobs:
           linker = "${{ matrix.gcc_prefix }}-gcc"
           EOF
           fi
-      
+
       - name: Build
         run: cargo build --release --target ${{ matrix.target }} --all-features
         env:
           RUSTFLAGS: -C target-feature=+crt-static -C link-arg=-static -C link-arg=-no-pie
-      
+
       - name: Strip binary
         run: |
           if [ "${{ matrix.arch }}" = "x86_64" ] || [ "${{ matrix.arch }}" = "i686" ]; then
@@ -193,12 +202,12 @@ jobs:
           else
             ${{ matrix.gcc_prefix }}-strip target/${{ matrix.target }}/release/payload_dumper
           fi
-      
+
       - name: Generate SHA256
         run: |
           cd target/${{ matrix.target }}/release
           sha256sum payload_dumper > sha256sum.txt
-      
+
       - name: Package
         run: |
           mkdir package
@@ -206,7 +215,7 @@ jobs:
           cp target/${{ matrix.target }}/release/sha256sum.txt package/
           cd package
           zip ../payload_dumper-linux-${{ matrix.arch }}.zip *
-      
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -220,20 +229,24 @@ jobs:
         include:
           - arch: aarch64
             target: aarch64-linux-android
+
           - arch: armv7a
             target: armv7-linux-androideabi
+
           - arch: x86_64
             target: x86_64-linux-android
+
           - arch: i686
             target: i686-linux-android
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      
+
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
         id: setup-ndk
@@ -243,61 +256,63 @@ jobs:
 
       - name: Create symlinks for NDK toolchains
         run: |
-         NDK_TOOLCHAIN="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin"
-         cd "$NDK_TOOLCHAIN"
-         ln -sf aarch64-linux-android21-clang aarch64-linux-android-clang
-         ln -sf aarch64-linux-android21-clang++ aarch64-linux-android-clang++
-         ln -sf armv7a-linux-androideabi21-clang armv7a-linux-androideabi-clang
-         ln -sf armv7a-linux-androideabi21-clang++ armv7a-linux-androideabi-clang++
-         ln -sf arm-linux-androideabi21-clang arm-linux-androideabi-clang
-         ln -sf arm-linux-androideabi21-clang++ arm-linux-androideabi-clang++
-         ln -sf x86_64-linux-android21-clang x86_64-linux-android-clang
-         ln -sf x86_64-linux-android21-clang++ x86_64-linux-android-clang++
-         ln -sf i686-linux-android21-clang i686-linux-android-clang
-         ln -sf i686-linux-android21-clang++ i686-linux-android-clang++    
-      
+          NDK_TOOLCHAIN="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin"
+          cd "$NDK_TOOLCHAIN"
+
+          ln -sf aarch64-linux-android21-clang aarch64-linux-android-clang
+          ln -sf aarch64-linux-android21-clang++ aarch64-linux-android-clang++
+          ln -sf armv7a-linux-androideabi21-clang armv7a-linux-androideabi-clang
+          ln -sf armv7a-linux-androideabi21-clang++ armv7a-linux-androideabi-clang++
+          ln -sf arm-linux-androideabi21-clang arm-linux-androideabi-clang
+          ln -sf arm-linux-androideabi21-clang++ arm-linux-androideabi-clang++
+          ln -sf x86_64-linux-android21-clang x86_64-linux-android-clang
+          ln -sf x86_64-linux-android21-clang++ x86_64-linux-android-clang++
+          ln -sf i686-linux-android21-clang i686-linux-android-clang
+          ln -sf i686-linux-android21-clang++ i686-linux-android-clang++
+
       - name: Setup cargo config
         run: |
           mkdir -p .cargo
+
           cat > .cargo/config.toml << EOF
           [target.aarch64-linux-android]
           linker = "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android21-clang"
-          
+
           [target.armv7-linux-androideabi]
           linker = "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/armv7a-linux-androideabi21-clang"
-          
+
           [target.x86_64-linux-android]
           linker = "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/x86_64-linux-android21-clang"
-          
+
           [target.i686-linux-android]
           linker = "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/i686-linux-android21-clang"
           EOF
-      
+
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
         env:
-         CC_aarch64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android21-clang
-         CXX_aarch64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android21-clang++
-         CC_armv7_linux_androideabi: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/armv7a-linux-androideabi21-clang
-         CXX_armv7_linux_androideabi: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/armv7a-linux-androideabi21-clang++
-         CC_x86_64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/x86_64-linux-android21-clang
-         CXX_x86_64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/x86_64-linux-android21-clang++
-         CC_i686_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/i686-linux-android21-clang
-         CXX_i686_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/i686-linux-android21-clang++
-         AR_aarch64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar
-         AR_armv7_linux_androideabi: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar
-         AR_x86_64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar
-         AR_i686_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar
-      
+          CC_aarch64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android21-clang
+          CXX_aarch64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android21-clang++
+          CC_armv7_linux_androideabi: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/armv7a-linux-androideabi21-clang
+          CXX_armv7_linux_androideabi: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/armv7a-linux-androideabi21-clang++
+          CC_x86_64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/x86_64-linux-android21-clang
+          CXX_x86_64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/x86_64-linux-android21-clang++
+          CC_i686_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/i686-linux-android21-clang
+          CXX_i686_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/i686-linux-android21-clang++
+          AR_aarch64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar
+          AR_armv7_linux_androideabi: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar
+          AR_x86_64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar
+          AR_i686_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar
+
       - name: Strip binary
         run: |
           ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-strip target/${{ matrix.target }}/release/payload_dumper
-      
+
       - name: Generate SHA256
         run: |
           cd target/${{ matrix.target }}/release
           sha256sum payload_dumper > sha256sum.txt
-      
+
       - name: Package
         run: |
           mkdir package
@@ -305,7 +320,7 @@ jobs:
           cp target/${{ matrix.target }}/release/sha256sum.txt package/
           cd package
           zip ../payload_dumper-android-${{ matrix.arch }}.zip *
-      
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -313,13 +328,20 @@ jobs:
           path: payload_dumper-android-${{ matrix.arch }}.zip
 
   release:
-    needs: [build-windows, build-windows-aarch64, build-macos, build-linux, build-android]
+    needs:
+      - build-windows
+      - build-windows-aarch64
+      - build-macos
+      - build-linux
+      - build-android
     runs-on: ubuntu-latest
+
     permissions:
       contents: write
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Extract version from Cargo.toml
         id: version
         run: |
@@ -332,12 +354,12 @@ jobs:
           echo "body<<EOF" >> $GITHUB_OUTPUT
           cat changelog.md >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-      
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-      
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -351,14 +373,16 @@ jobs:
             ## Installation
 
             If you're unsure which to download:
+
             - To install on `Linux` or `Termux`, Run
-            ```bash
-            bash <(curl -sSL "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/install.sh")
-            ```
+              ```bash
+              bash <(curl -sSL "https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/install.sh")
+              ```
+
             - To install on `Windows`, run
-            ```powershell
-            powershell -NoExit -ExecutionPolicy Bypass -Command "Invoke-RestMethod -Uri 'https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/install.ps1' | Invoke-Expression"
-            ```
+              ```powershell
+              powershell -NoExit -ExecutionPolicy Bypass -Command "Invoke-RestMethod -Uri 'https://raw.githubusercontent.com/rhythmcache/payload-dumper-rust/main/scripts/install.ps1' | Invoke-Expression"
+              ```
 
             ## Changelog
             ${{ steps.changelog.outputs.body }}
@@ -366,3 +390,16 @@ jobs:
             artifacts/**/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-crate:
+    needs: release
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish to crates.io
+        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
