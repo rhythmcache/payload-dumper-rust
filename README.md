@@ -13,7 +13,7 @@ Extracts partition images (boot, system, vendor, etc.) from Android OTA `payload
 - **Works with ZIP files** - Extract directly from ROM ZIPs without unzipping first
 - **URL support** - Extract from remote URLs, downloading only the needed data instead of the entire file
 - **Cross-platform** - Works on Linux, Windows, macOS, and Android (Termux)
-- **Incremental OTA** - Experimental Incremental OTA Support ( Not tested)
+- **Incremental OTA** - Experimental Incremental OTA Support (ONLY ZUCCHINI OPS IS NOT SUPPORTED YET)
 
 ## Installation
 
