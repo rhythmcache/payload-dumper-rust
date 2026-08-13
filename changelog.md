@@ -1,4 +1,4 @@
-# Changes since v0.8.3
+# Changes in v0.8.4
 
 ## Added
 - PUFFDIFF install-operation support: apply PUF1 patches via the `puffdiff` crate (PR #14).
