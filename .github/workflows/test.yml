@@ -1,0 +1,130 @@
+name: Payload Dumper Tester
+
+on:
+  workflow_dispatch:
+    inputs:
+      payload_url:
+        description: "Direct link to payload.bin, ota.zip, or a rom.zip containing payload.bin"
+        required: true
+        type: string
+      extra_args:
+        description: "Optional extra args to pass to payload_dumper (e.g. -p boot,vendor)"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout payload-dumper-rust
+        uses: actions/checkout@v4
+        with:
+          repository: rhythmcache/payload-dumper-rust
+          path: payload-dumper-rust
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry & build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: payload-dumper-rust
+
+      - name: Build payload_dumper (release)
+        working-directory: payload-dumper-rust
+        run: cargo build --release
+
+      - name: Show binary info
+        working-directory: payload-dumper-rust
+        run: |
+          ls -lh target/release/payload_dumper
+          file target/release/payload_dumper
+          ./target/release/payload_dumper --help || true
+
+      - name: Prepare workspace
+        run: |
+          mkdir -p work/download work/extracted
+
+      - name: Download input file
+        id: download
+        working-directory: work
+        run: |
+          set -euo pipefail
+          URL="${{ inputs.payload_url }}"
+          echo "Downloading: $URL"
+
+          FNAME=$(basename "${URL%%\?*}")
+          [ -z "$FNAME" ] && FNAME="input.bin"
+
+          if curl -fL --retry 3 --retry-delay 5 -o "download/$FNAME" "$URL"; then
+            echo "status=ok" >> "$GITHUB_OUTPUT"
+            echo "filename=$FNAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=fail" >> "$GITHUB_OUTPUT"
+            echo "::error::Failed to download file from provided URL"
+            exit 1
+          fi
+
+          ls -lh "download/$FNAME"
+
+      - name: Extract payload
+        id: extract
+        working-directory: work
+        run: |
+          set -euo pipefail
+          BIN="../payload-dumper-rust/target/release/payload_dumper"
+          INPUT="download/${{ steps.download.outputs.filename }}"
+          OUT="extracted"
+
+          echo "Running extraction on: $INPUT"
+          if "$BIN" "$INPUT" --out "$OUT" ${{ inputs.extra_args }} 2>&1 | tee extraction.log; then
+            if [ -n "$(ls -A "$OUT" 2>/dev/null)" ]; then
+              echo "status=success" >> "$GITHUB_OUTPUT"
+              echo "###  Extraction succeeded" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "status=empty" >> "$GITHUB_OUTPUT"
+              echo "###  Extraction command exited 0 but produced no files" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+          else
+            echo "status=fail" >> "$GITHUB_OUTPUT"
+            echo "###  Extraction failed" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: List extracted images
+        if: always()
+        working-directory: work
+        run: |
+          echo "## Extracted files" >> "$GITHUB_STEP_SUMMARY"
+          if [ -d extracted ] && [ -n "$(ls -A extracted 2>/dev/null)" ]; then
+            ls -lh extracted | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "_No files extracted._" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload extraction log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extraction-log
+          path: work/extraction.log
+          if-no-files-found: warn
+
+      - name: Upload extracted images
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extracted-images
+          path: work/extracted/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Final status
+        if: always()
+        run: |
+          echo "Download status: ${{ steps.download.outputs.status }}"
+          echo "Extraction status: ${{ steps.extract.outputs.status }}"
