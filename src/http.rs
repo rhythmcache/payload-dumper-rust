@@ -110,6 +110,23 @@ async fn create_http_client(
         .default_headers(headers)
         .redirect(reqwest::redirect::Policy::limited(10));
 
+    // on android, rustls platform verifier requires JNI init with a JavaVM
+    // context which isn't available in standalone CLI binaries (e.g. Termux)
+    // and adds unnecessary complexity for library consumers that don't need
+    // real system trust store integration. bypass it with bundled webpki roots
+    // instead when the "android-webpki-roots" feature is enabled.
+    #[cfg(all(target_os = "android", feature = "android-webpki-roots"))]
+    {
+        let mut root_store = rustls::RootCertStore::empty();
+        root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+
+        let tls_config = rustls::ClientConfig::builder()
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
+
+        client_builder = client_builder.use_preconfigured_tls(tls_config);
+    }
+
     // use custom DNS resolver when feature is enabled
     #[cfg(feature = "hickory_dns")]
     {

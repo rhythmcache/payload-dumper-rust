@@ -73,6 +73,7 @@ rustls = { version = "0.23", features = [
 digest = "0.11"
 sha2 = "0.11"
 lz4diff = { version = "0.1", optional = true }
+webpki-roots = { version = "1.0.9", optional = true }
 
 [build-dependencies]
 chrono      = "0.4"
@@ -90,6 +91,7 @@ hickory_dns = [
 ]
 diff_ota = ["dep:bsdiff-android", "dep:puffdiff", "dep:lz4diff"]
 prefetch = ["remote_zip", "dep:tempfile"]
+android-webpki-roots = ["dep:webpki-roots"]
 
 [profile.release]
 opt-level     = 3
