@@ -71,6 +71,9 @@ fn main() {
     if env::var("CARGO_FEATURE_PREFETCH").is_ok() {
         features.push("prefetch");
     }
+    if env::var("CARGO_FEATURE_ANDROID_WEBPKI_ROOTS").is_ok() {
+        features.push("android-webpki-roots");
+    }
     let features_str = if features.is_empty() {
         "none".to_string()
     } else {
