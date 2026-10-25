@@ -10,9 +10,9 @@ use anyhow::anyhow;
 use payload_dumper::payload::payload_dumper::AsyncPayloadRead;
 use payload_dumper::payload::payload_parser::parse_local_payload;
 #[cfg(feature = "local_zip")]
-use payload_dumper::payload::payload_parser::parse_local_zip_payload;
+use payload_dumper::payload::payload_parser::parse_local_zip_payload_ext;
 #[cfg(feature = "remote_zip")]
-use payload_dumper::payload::payload_parser::{parse_remote_bin_payload, parse_remote_payload};
+use payload_dumper::payload::payload_parser::{parse_remote_bin_payload, parse_remote_payload_ext};
 use payload_dumper::readers::local_reader::LocalAsyncPayloadReader;
 #[cfg(feature = "local_zip")]
 use payload_dumper::readers::local_zip_reader::LocalAsyncZipPayloadReader;
@@ -82,6 +82,7 @@ pub async fn load_payload(
     user_agent: Option<&str>,
     cookies: Option<&str>,
     dns: Option<&str>,
+    full_zip_metadata: bool,
     ui: &UiOutput,
 ) -> Result<PayloadInfo> {
     let payload_path_str = payload_path.to_string_lossy().to_string();
@@ -91,9 +92,17 @@ pub async fn load_payload(
             #[cfg(feature = "remote_zip")]
             {
                 ui.println("- Connecting to remote ZIP archive...");
-                let (manifest, data_offset, zip_info) =
-                    parse_remote_payload(payload_path_str.clone(), user_agent, cookies, dns)
-                        .await?;
+                if full_zip_metadata {
+                    ui.println("- Reading complete ZIP directory info for metadata export...");
+                }
+                let (manifest, data_offset, zip_info) = parse_remote_payload_ext(
+                    payload_path_str.clone(),
+                    user_agent,
+                    cookies,
+                    dns,
+                    full_zip_metadata,
+                )
+                .await?;
                 ui.pb_eprintln(format!(
                     "- Remote ZIP size: {}",
                     format_size(zip_info.archive_size)
@@ -142,7 +151,8 @@ pub async fn load_payload(
             #[cfg(feature = "local_zip")]
             {
                 let (manifest, data_offset, zip_info) =
-                    parse_local_zip_payload(payload_path.to_path_buf()).await?;
+                    parse_local_zip_payload_ext(payload_path.to_path_buf(), full_zip_metadata)
+                        .await?;
                 let source_info = create_zip_source_info("local_zip", &payload_path_str, &zip_info);
                 (manifest, data_offset, Some(source_info))
             }

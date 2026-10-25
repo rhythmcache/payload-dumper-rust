@@ -205,8 +205,10 @@ pub struct ZipDetails {
     pub compressed_size: u64,
     pub compressed_size_readable: String,
     pub compression_method: String,
-    pub total_entries: usize,
-    pub central_directory_offset: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_entries: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub central_directory_offset: Option<u64>,
 }
 
 #[derive(Serialize, Clone, Debug)]

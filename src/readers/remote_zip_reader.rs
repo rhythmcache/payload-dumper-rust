@@ -27,15 +27,12 @@ impl RemoteAsyncZipPayloadReader {
         dns: Option<&str>,
     ) -> Result<Self> {
         let http_reader = HttpReader::new(url, user_agent, cookies, dns).await?;
-
-        let entry = ZipParser::find_payload_entry(&http_reader).await?;
-        let payload_offset = ZipParser::get_data_offset(&http_reader, &entry).await?;
-        ZipParser::verify_payload_magic(&http_reader, payload_offset).await?;
+        let zip_info = ZipParser::get_zip_info(&http_reader).await?;
 
         Ok(Self {
             http_reader: Arc::new(http_reader),
-            payload_offset,
-            payload_size: entry.uncompressed_size,
+            payload_offset: zip_info.payload_data_offset,
+            payload_size: zip_info.uncompressed_size,
         })
     }
 }

@@ -2,12 +2,41 @@ name: Build and Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
+  test:
+    name: Test & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry & build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run unit tests
+        run: cargo test
+
   build-windows:
+    needs: test
     runs-on: windows-latest
     strategy:
       matrix:
@@ -52,6 +81,7 @@ jobs:
           path: payload_dumper-windows-${{ matrix.arch }}.zip
 
   build-windows-aarch64:
+    needs: test
     runs-on: windows-11-arm
 
     steps:
@@ -89,6 +119,7 @@ jobs:
           path: payload_dumper-windows-aarch64.zip
 
   build-macos:
+    needs: test
     runs-on: macos-latest
     strategy:
       matrix:
@@ -129,6 +160,7 @@ jobs:
           path: payload_dumper-macos-${{ matrix.arch }}.zip
 
   build-linux:
+    needs: test
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -223,6 +255,7 @@ jobs:
           path: payload_dumper-linux-${{ matrix.arch }}.zip
 
   build-android:
+    needs: test
     runs-on: macos-latest
     strategy:
       matrix:
@@ -328,6 +361,7 @@ jobs:
           path: payload_dumper-android-${{ matrix.arch }}.zip
 
   release:
+    if: startsWith(github.ref, 'refs/tags/v')
     needs:
       - build-windows
       - build-windows-aarch64
@@ -392,6 +426,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish-crate:
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: release
     runs-on: ubuntu-latest
 

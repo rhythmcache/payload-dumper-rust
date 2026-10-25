@@ -16,6 +16,7 @@ use tempfile::TempDir;
 use tokio::sync::Semaphore;
 
 /// extract partitions using prefetch mode (download then extract)
+#[allow(clippy::too_many_arguments)]
 pub async fn extract_partitions_prefetch(
     args: &Args,
     partitions: &[PartitionUpdate],

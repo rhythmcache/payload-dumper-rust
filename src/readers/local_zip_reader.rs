@@ -21,18 +21,12 @@ impl LocalAsyncZipPayloadReader {
         // use LocalZipIO for parsing
         let io = crate::zip::local_zip_io::LocalZipIO::new(zip_path.clone()).await?;
 
-        // find payload.bin entry
-        let entry = crate::zip::core_parser::ZipParser::find_payload_entry(&io).await?;
-
-        // get actual data offset (after local header)
-        let data_offset = crate::zip::core_parser::ZipParser::get_data_offset(&io, &entry).await?;
-
-        // verify it's actually a payload file
-        crate::zip::core_parser::ZipParser::verify_payload_magic(&io, data_offset).await?;
+        // get payload info (uses fast OTA metadata path if available, and verifies payload magic)
+        let zip_info = crate::zip::core_parser::ZipParser::get_zip_info(&io).await?;
 
         Ok(Self {
             path: zip_path,
-            payload_offset: data_offset,
+            payload_offset: zip_info.payload_data_offset,
         })
     }
 }

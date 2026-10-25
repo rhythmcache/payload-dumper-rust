@@ -63,18 +63,22 @@ where
     Ok((manifest, data_offset))
 }
 
-/// returns (manifest, data_offset, zip_info)
+/// returns (manifest, data_offset, zip_info) with optional full central directory resolution
 #[cfg(feature = "remote_zip")]
-pub async fn parse_remote_payload(
+pub async fn parse_remote_payload_ext(
     url: String,
     user_agent: Option<&str>,
     cookies: Option<&str>,
     dns: Option<&str>,
+    full_zip_metadata: bool,
 ) -> Result<(DeltaArchiveManifest, u64, ZipMetadataInfo)> {
     let http_reader = HttpReader::new(url, user_agent, cookies, dns).await?;
-    let zip_info = ZipParser::get_zip_info(&http_reader).await?;
+    let zip_info = if full_zip_metadata {
+        ZipParser::get_full_zip_info(&http_reader).await?
+    } else {
+        ZipParser::get_zip_info(&http_reader).await?
+    };
     let payload_offset = zip_info.payload_data_offset;
-    ZipParser::verify_payload_magic(&http_reader, payload_offset).await?;
 
     let mut pos = payload_offset;
 
@@ -125,6 +129,17 @@ pub async fn parse_remote_payload(
     Ok((manifest, data_offset, zip_info))
 }
 
+/// returns (manifest, data_offset, zip_info)
+#[cfg(feature = "remote_zip")]
+pub async fn parse_remote_payload(
+    url: String,
+    user_agent: Option<&str>,
+    cookies: Option<&str>,
+    dns: Option<&str>,
+) -> Result<(DeltaArchiveManifest, u64, ZipMetadataInfo)> {
+    parse_remote_payload_ext(url, user_agent, cookies, dns, false).await
+}
+
 /// parse payload from local file
 pub async fn parse_local_payload(
     payload_path: &std::path::Path,
@@ -144,10 +159,16 @@ pub struct ZipPayloadFile {
 
 #[cfg(feature = "local_zip")]
 impl ZipPayloadFile {
-    pub async fn new(zip_path: PathBuf) -> Result<(Self, ZipMetadataInfo)> {
+    pub async fn new_ext(
+        zip_path: PathBuf,
+        full_zip_metadata: bool,
+    ) -> Result<(Self, ZipMetadataInfo)> {
         let io = LocalZipIO::new(zip_path.clone()).await?;
-        let zip_info = ZipParser::get_zip_info(&io).await?;
-        ZipParser::verify_payload_magic(&io, zip_info.payload_data_offset).await?;
+        let zip_info = if full_zip_metadata {
+            ZipParser::get_full_zip_info(&io).await?
+        } else {
+            ZipParser::get_zip_info(&io).await?
+        };
 
         let file = File::open(&zip_path).await?;
 
@@ -160,6 +181,10 @@ impl ZipPayloadFile {
             },
             zip_info,
         ))
+    }
+
+    pub async fn new(zip_path: PathBuf) -> Result<(Self, ZipMetadataInfo)> {
+        Self::new_ext(zip_path, false).await
     }
 }
 
@@ -236,14 +261,23 @@ impl AsyncSeek for ZipPayloadFile {
     }
 }
 
+/// parse payload from local ZIP file with optional full central directory resolution
+#[cfg(feature = "local_zip")]
+pub async fn parse_local_zip_payload_ext(
+    zip_path: PathBuf,
+    full_zip_metadata: bool,
+) -> Result<(DeltaArchiveManifest, u64, ZipMetadataInfo)> {
+    let (zip_payload, zip_info) = ZipPayloadFile::new_ext(zip_path, full_zip_metadata).await?;
+    let (manifest, data_offset) = parse_payload(zip_payload).await?;
+    Ok((manifest, data_offset, zip_info))
+}
+
 /// parse payload from local ZIP file
 #[cfg(feature = "local_zip")]
 pub async fn parse_local_zip_payload(
     zip_path: PathBuf,
 ) -> Result<(DeltaArchiveManifest, u64, ZipMetadataInfo)> {
-    let (zip_payload, zip_info) = ZipPayloadFile::new(zip_path).await?;
-    let (manifest, data_offset) = parse_payload(zip_payload).await?;
-    Ok((manifest, data_offset, zip_info))
+    parse_local_zip_payload_ext(zip_path, false).await
 }
 
 /// Parse payload from remote .bin file (not in ZIP)

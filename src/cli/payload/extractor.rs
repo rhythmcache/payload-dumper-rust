@@ -61,7 +61,7 @@ async fn extract_sequential(
         // Create progress through UI layer - no indicatif imports needed!
         let progress = ui.create_extraction_progress(&partition.partition_name);
         let reporter = CliExtractionReporter::new(progress);
-        let output_path = args.out.join(format!("{}.img", &partition.partition_name));
+        let output_path = args.out.join(format!("{}.img", partition.partition_name));
 
         if let Err(e) = dump_partition(
             partition,

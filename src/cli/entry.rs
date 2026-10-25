@@ -64,6 +64,7 @@ pub async fn run() -> Result<()> {
         args.user_agent.as_deref(),
         args.cookies.as_deref(),
         args.dns.as_deref(),
+        args.metadata.is_some(),
         &ui,
     )
     .await?;
@@ -172,17 +173,26 @@ pub async fn run() -> Result<()> {
             // Get payload offset (0 for .bin, non-zero for ZIP)
             let payload_offset = match payload_type {
                 PayloadType::RemoteZip => {
-                    // For ZIP files, we need to get the offset of payload.bin inside the ZIP
-                    use payload_dumper::zip::core_parser::ZipParser;
-                    let http_reader = payload_dumper::http::HttpReader::new(
-                        url.clone(),
-                        args.user_agent.as_deref(),
-                        args.cookies.as_deref(),
-                        args.dns.as_deref(),
-                    )
-                    .await?;
-                    let entry = ZipParser::find_payload_entry(&http_reader).await?;
-                    ZipParser::get_data_offset(&http_reader, &entry).await?
+                    if let Some(offset) = payload_info
+                        .source_info
+                        .as_ref()
+                        .and_then(|s| s.zip_details.as_ref())
+                        .map(|z| z.payload_data_offset)
+                    {
+                        offset
+                    } else {
+                        // Fallback to reading offset from ZIP
+                        use payload_dumper::zip::core_parser::ZipParser;
+                        let http_reader = payload_dumper::http::HttpReader::new(
+                            url.clone(),
+                            args.user_agent.as_deref(),
+                            args.cookies.as_deref(),
+                            args.dns.as_deref(),
+                        )
+                        .await?;
+                        let zip_info = ZipParser::get_zip_info(&http_reader).await?;
+                        zip_info.payload_data_offset
+                    }
                 }
                 PayloadType::RemoteBin => 0, // Direct .bin file has no offset
                 _ => unreachable!(),
